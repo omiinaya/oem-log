@@ -34,7 +34,7 @@ const latest = posts.slice(0, 4);
 					useful middle of the story.
 				</p>
 				<div class="hero-actions">
-					<a class="btn-primary" href="/blog">&gt;_ read the notes</a>
+					<a class="btn-primary" href={`${import.meta.env.BASE_URL}blog/`}>&gt;_ read the notes</a>
 				</div>
 			</section>
 
@@ -50,7 +50,7 @@ const latest = posts.slice(0, 4);
 						{
 							latest.map((post, i) => (
 								<li>
-									<a href={`/blog/${post.id}/`}>
+									<a href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
 										<span class="post-idx">0{i + 1}</span>
 										<span class="post-body">
 											<span class="post-title">{post.data.title}</span>
@@ -66,7 +66,7 @@ const latest = posts.slice(0, 4);
 						}
 					</ul>
 					<div class="all-notes">
-						<a href="/blog">$ cat all →</a>
+						<a href={`${import.meta.env.BASE_URL}blog/`}>$ cat all →</a>
 					</div>
 				</section>
 			)}
