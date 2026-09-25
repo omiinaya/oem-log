@@ -1,0 +1,56 @@
+---
+import { AUTHOR_HANDLE, AUTHOR_EMAIL, SITE_TITLE } from '../consts';
+const today = new Date();
+---
+
+<footer>
+	<div class="footer-inner">
+		<div class="footer-meta">
+			<span>© {today.getFullYear()} {AUTHOR_HANDLE}</span>
+			<span class="dot" aria-hidden="true">·</span>
+			<span>build with astro · static · no tracking</span>
+			<span class="dot" aria-hidden="true">·</span>
+			<a href={`mailto:${AUTHOR_EMAIL}`}>contact</a>
+		</div>
+	</div>
+	<div class="footer-status" aria-hidden="true">
+		<span class="ok">●</span> all systems nominal
+		<span class="bar">│</span>
+		<span class="ok">●</span> sig: posts publish from origin only
+	</div>
+</footer>
+
+<style>
+	footer {
+		border-top: 1px solid var(--line);
+		background: var(--footer-bg);
+		padding: 2rem 1.25rem;
+		margin-top: 3rem;
+	}
+	.footer-inner { max-width: var(--maxw); margin: 0 auto; }
+	.footer-meta {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		color: var(--ink-faint);
+		font-size: 0.78rem;
+		font-family: var(--font-mono);
+	}
+	.footer-meta a { color: var(--ink-dim); transition: color 0.12s ease; }
+	.footer-meta a:hover { color: var(--ink); }
+	.dot { opacity: 0.6; }
+	.footer-status {
+		max-width: var(--maxw);
+		margin: 1.4rem auto 0;
+		padding-top: 1rem;
+		border-top: 1px dashed var(--line);
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		letter-spacing: 0.02em;
+		color: var(--ink-faint);
+	}
+	.ok { color: var(--ink-dim); margin-right: 0.35em; }
+	.ok + span { margin-right: 1.2em; }
+	.bar { color: var(--ink-faint); margin-right: 1.2em; }
+</style>

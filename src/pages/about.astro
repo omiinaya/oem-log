@@ -1,0 +1,77 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import { AUTHOR_EMAIL, AUTHOR_GITHUB, SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title={`About · ${SITE_TITLE}`} description={SITE_DESCRIPTION} />
+	</head>
+	<body>
+		<Header />
+		<main class="about-main">
+			<section class="about-head">
+				<p class="kicker">about</p>
+				<h1>This blog</h1>
+			</section>
+
+			<section class="about-body">
+				<p>
+					<strong>oem/log</strong> is where I keep the useful middle of the story:
+					short notes on techniques I work out while building and breaking things.
+				</p>
+				<p>What it is:</p>
+				<ul>
+					<li>Standalone notes, not full writeups. The trick, the mistake, the fix.</li>
+					<li>Practical, meant to be used in a bigger build.</li>
+					<li>Written for anyone hitting the same problem.</li>
+				</ul>
+				<p>What it deliberately is not:</p>
+				<ul>
+					<li>A full system walkthrough or a production blueprint.</li>
+					<li>A place for sensitive, personal, or identifying details.</li>
+					<li>A log of everything I'm working on. Just the useful takeaways.</li>
+				</ul>
+			</section>
+
+			<section class="about-links">
+				<a href={AUTHOR_GITHUB} target="_blank" rel="me">$ cat github →</a>
+				<a href={`mailto:${AUTHOR_EMAIL}`}>$ mail →</a>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.about-main { max-width: var(--maxw-tight); }
+	.about-head { padding: 2.5rem 0 2rem; }
+	.about-head .kicker { margin-bottom: 0.8rem; }
+	.about-head h1 { font-size: 2rem; margin: 0; letter-spacing: -0.01em; }
+
+	.about-body {
+		padding: 1.6rem 1.6rem;
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		font-size: 0.95rem;
+		color: var(--ink-dim);
+	}
+	.about-body strong { color: var(--ink); }
+	.about-body p:first-of-type { margin-top: 0; }
+	.about-body ul { margin-bottom: 1.4rem; }
+	.about-body ul:last-child { margin-bottom: 0.4rem; }
+
+	.about-links { display: flex; flex-wrap: wrap; gap: 1.4rem; margin-top: 1.8rem; }
+	.about-links a {
+		font-family: var(--font-mono);
+		font-size: 0.86rem;
+		color: var(--ink-dim);
+		text-decoration: none;
+		transition: color 0.12s ease;
+	}
+	.about-links a:hover { color: var(--ink); }
+</style>

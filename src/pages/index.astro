@@ -1,0 +1,198 @@
+---
+import { getCollection } from 'astro:content';
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import FormattedDate from '../components/FormattedDate.astro';
+import Header from '../components/Header.astro';
+import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
+
+const posts = (await getCollection('blog')).sort(
+	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+);
+const latest = posts.slice(0, 4);
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+	</head>
+	<body>
+		<Header />
+		<main>
+			<div class="prompt-line" aria-hidden="true">
+				<span>omiinaya@oem:~$ cat &amp;&amp; ls logs</span><span class="cursor"></span>
+			</div>
+
+			<section class="hero">
+				<p class="kicker">things we learned · worth sharing</p>
+				<h1 class="hero-title">{SITE_TITLE}<span class="caret">▮</span></h1>
+				<p class="hero-desc">
+					Short writeups of things we've learned while shipping real systems:
+					the reusable trick, the gotcha that cost us time, and how to use it
+					in a bigger build. No full blueprints, no sensitive details, just the
+					useful middle of the story.
+				</p>
+				<div class="hero-actions">
+					<a class="btn-primary" href="/blog">&gt;_ read the notes</a>
+				</div>
+			</section>
+
+			<section class="status">
+				<span class="lbl">status</span>
+				<span class="val">● static · fast · zero runtime attack surface</span>
+			</section>
+
+			{latest.length > 0 && (
+				<section class="latest">
+					<div class="list-head">Index / latest</div>
+					<ul class="post-list">
+						{
+							latest.map((post, i) => (
+								<li>
+									<a href={`/blog/${post.id}/`}>
+										<span class="post-idx">0{i + 1}</span>
+										<span class="post-body">
+											<span class="post-title">{post.data.title}</span>
+											<span class="post-desc">{post.data.description}</span>
+										</span>
+										<span class="post-date">
+											<FormattedDate date={post.data.pubDate} />
+										</span>
+										<span class="post-sym" aria-hidden="true">▸</span>
+									</a>
+								</li>
+							))
+						}
+					</ul>
+					<div class="all-notes">
+						<a href="/blog">$ cat all →</a>
+					</div>
+				</section>
+			)}
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.prompt-line {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--ink-faint);
+		margin-bottom: 2.2rem;
+		white-space: nowrap;
+		overflow-x: auto;
+	}
+	.prompt-line .cursor {
+		display: inline-block;
+		width: 0.5em;
+		height: 0.95em;
+		background: var(--ink);
+		vertical-align: -0.1em;
+		margin-left: 0.15em;
+		animation: blink 1s step-end infinite;
+	}
+
+	.hero { padding: 0.5rem 0 2.5rem; max-width: var(--maxw-tight); }
+	.hero .kicker { margin-bottom: 1rem; }
+	.hero-title {
+		font-size: 2.2rem;
+		letter-spacing: -0.01em;
+		line-height: 1.1;
+		margin-bottom: 1.3rem;
+	}
+	.hero-title .caret { color: var(--ink-faint); animation: blink 1.3s step-end infinite; }
+	@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+	.hero-desc {
+		color: var(--ink-dim);
+		font-size: 0.95rem;
+		line-height: 1.7;
+		margin-bottom: 1.8rem;
+	}
+	.hero-desc strong { color: var(--ink); font-weight: 700; }
+	.hero-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+	.btn-primary {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.6em 1.3em;
+		border-radius: 0;
+		font-family: var(--font-mono);
+		font-size: 0.84rem;
+		color: var(--ink);
+		border: 1px solid var(--ink-faint);
+		background: transparent;
+		text-decoration: none;
+		letter-spacing: 0.02em;
+		transition: all 0.12s ease;
+	}
+	.btn-primary:hover {
+		background: var(--bg-2);
+		border-color: var(--ink);
+		color: var(--ink);
+	}
+
+	.status {
+		padding: 0.8rem 1.1rem;
+		background: var(--panel);
+		border: 1px solid var(--line);
+		margin-bottom: 1.8rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: var(--ink-dim);
+	}
+	.status .lbl {
+		color: var(--ink-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		font-size: 0.66rem;
+		margin-right: 0.7rem;
+	}
+	.status .val { color: var(--ink); }
+
+	.latest { margin-top: 2.4rem; }
+	.list-head {
+		font-size: 0.7rem;
+		color: var(--ink-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.18em;
+		border-bottom: 1px solid var(--line);
+		padding-bottom: 0.6rem;
+		margin-bottom: 0.2rem;
+	}
+	.post-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.post-list li { margin: 0; }
+	.post-list a {
+		display: flex;
+		align-items: center;
+		gap: 1.1rem;
+		padding: 0.85rem 0.5rem;
+		border-bottom: 1px solid var(--line);
+		text-decoration: none;
+		transition: background 0.1s ease;
+	}
+	.post-list a:hover { background: var(--panel); }
+	.post-idx { color: var(--ink-faint); font-size: 0.75rem; min-width: 2.6rem; }
+	.post-body { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 0.5rem; overflow: hidden; }
+	.post-title { font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.post-list a:hover .post-title { color: var(--ink); }
+	.post-desc { color: var(--ink-faint); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.post-date { color: var(--ink-faint); font-size: 0.75rem; white-space: nowrap; }
+	.post-sym { color: var(--ink-faint); transition: color 0.12s ease; }
+	.post-list a:hover .post-sym { color: var(--ink); }
+	.all-notes { margin-top: 1.4rem; text-align: right; }
+	.all-notes a { font-family: var(--font-mono); font-size: 0.84rem; color: var(--ink-dim); text-decoration: none; }
+	.all-notes a:hover { color: var(--ink); }
+
+	@media (max-width: 680px) {
+		.prompt-line { display: none; }
+		.hero { padding: 1rem 0 2rem; }
+		.hero-title { font-size: 1.9rem; }
+		.post-desc { display: none; }
+		.post-date { display: none; }
+	}
+</style>

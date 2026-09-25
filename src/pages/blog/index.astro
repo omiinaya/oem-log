@@ -1,0 +1,87 @@
+---
+import { getCollection } from 'astro:content';
+import BaseHead from '../../components/BaseHead.astro';
+import Footer from '../../components/Footer.astro';
+import FormattedDate from '../../components/FormattedDate.astro';
+import Header from '../../components/Header.astro';
+import { SITE_DESCRIPTION, SITE_TITLE } from '../../consts';
+
+const posts = (await getCollection('blog')).sort(
+	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+);
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+	</head>
+	<body>
+		<Header />
+		<main>
+			<section class="list-head">
+				<p class="kicker">all notes</p>
+				<h1>Index</h1>
+				<p class="sub">{posts.length} note{posts.length === 1 ? '' : 's'} · newest first</p>
+			</section>
+
+			<ul class="post-grid">
+				{
+					posts.map((post, i) => (
+						<li>
+							<a href={`/blog/${post.id}/`}>
+								<span class="post-num">0{posts.length - i}</span>
+								<div class="post-body">
+									<h2>{post.data.title}</h2>
+									<p class="post-desc">{post.data.description}</p>
+									<p class="post-date"><FormattedDate date={post.data.pubDate} /></p>
+								</div>
+								<span class="arrow" aria-hidden="true">▸</span>
+							</a>
+						</li>
+					))
+				}
+			</ul>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.list-head { padding: 2.5rem 0 2rem; }
+	.list-head .kicker { margin-bottom: 0.8rem; }
+	.list-head h1 { font-size: 2rem; margin-bottom: 0.6rem; letter-spacing: -0.01em; }
+	.list-head .sub {
+		color: var(--ink-faint);
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		margin: 0;
+	}
+
+	.post-grid { list-style: none; margin: 0; padding: 0; }
+	.post-grid li { margin: 0; }
+	.post-grid a {
+		display: flex;
+		align-items: center;
+		gap: 1.1rem;
+		padding: 1rem 0.6rem;
+		border-bottom: 1px solid var(--line);
+		text-decoration: none;
+		transition: background 0.1s ease;
+	}
+	.post-grid a:hover { background: var(--panel); }
+	.post-num { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-faint); min-width: 2.8rem; }
+	.post-body { flex: 1; min-width: 0; }
+	.post-body h2 { margin: 0 0 0.3rem; font-size: 1.15rem; color: var(--ink); }
+	.post-grid a:hover h2 { color: var(--ink); }
+	.post-desc { margin: 0 0 0.3rem; color: var(--ink-faint); font-size: 0.85rem; line-height: 1.5; }
+	.post-date { margin: 0; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-faint); }
+	.arrow { color: var(--ink-faint); font-size: 1rem; transition: color 0.12s ease, transform 0.12s ease; }
+	.post-grid a:hover .arrow { color: var(--ink); transform: translateX(3px); }
+
+	@media (max-width: 560px) {
+		.post-num { display: none; }
+		.list-head h1 { font-size: 1.7rem; }
+		.post-grid a { gap: 0.7rem; padding: 0.9rem 0.4rem; }
+	}
+</style>

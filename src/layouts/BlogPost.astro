@@ -1,0 +1,89 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import FormattedDate from '../components/FormattedDate.astro';
+import Header from '../components/Header.astro';
+import { AUTHOR_HANDLE } from '../consts';
+
+type Props = CollectionEntry<'blog'>['data'];
+
+const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
+---
+
+<html lang="en">
+	<head>
+		<BaseHead title={title} description={description} />
+	</head>
+
+	<body>
+		<Header />
+		<main class="post-main">
+			<article>
+				{heroImage && (
+					<div class="hero-image">
+						<Image width={1020} height={510} src={heroImage} alt="" />
+					</div>
+				)}
+				<div class="prose">
+					<header class="post-head">
+						<p class="kicker">note</p>
+						<h1>··· {title} ···.md</h1>
+						<div class="byline">
+							<span>@{AUTHOR_HANDLE}</span>
+							<span class="sep" aria-hidden="true">·</span>
+							<FormattedDate date={pubDate} />
+							{
+								updatedDate && (
+									<>
+										<span class="sep" aria-hidden="true">·</span>
+										<span class="updated">updated <FormattedDate date={updatedDate} /></span>
+									</>
+								)
+							}
+						</div>
+					</header>
+					<slot />
+				</div>
+			</article>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.post-main { max-width: var(--maxw-tight); }
+	.hero-image { margin: 1rem 0 2rem; }
+	.hero-image img { display: block; width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--line); }
+
+	.prose { color: var(--ink); font-size: 0.95rem; }
+	.post-head {
+		margin-bottom: 2.2rem;
+		padding-bottom: 1.6rem;
+		border-bottom: 1px solid var(--line);
+	}
+	.post-head .kicker { margin-bottom: 0.9rem; }
+	.post-head h1 { font-size: 1.9rem; line-height: 1.15; margin-bottom: 1.1rem; letter-spacing: -0.01em; }
+	.byline {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		color: var(--ink-faint);
+	}
+	.sep { opacity: 0.6; }
+	.updated { color: var(--ink-faint); }
+
+	.prose :global(h2) { margin-top: 2em; }
+	.prose :global(h3) { margin-top: 1.6em; }
+	.prose :global(h2::before) { content: '## '; color: var(--ink-faint); }
+	.prose :global(a) { color: var(--ink-dim); }
+	.prose :global(a:hover) { color: var(--ink); }
+
+	@media (max-width: 680px) {
+		.post-head h1 { font-size: 1.6rem; }
+	}
+</style>
