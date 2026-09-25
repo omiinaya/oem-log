@@ -7,6 +7,7 @@ import { defineConfig, fontProviders } from 'astro/config';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://omiinaya.github.io/oem-log/',
+	base: '/oem-log/',
 	integrations: [mdx(), sitemap()],
 	fonts: [
 		{
