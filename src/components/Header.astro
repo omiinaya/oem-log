@@ -142,4 +142,27 @@ import HeaderLink from './HeaderLink.astro';
 	.theme-toggle:hover { color: var(--ink); border-color: var(--ink-dim); background: var(--bg-2); }
 	.controls a { display: flex; align-items: center; color: var(--ink-faint); transition: color 0.12s ease; }
 	.controls a:hover { color: var(--ink); }
+
+	/* ============ responsive header ============ */
+	@media (max-width: 640px) {
+		nav {
+			flex-wrap: wrap;
+			height: auto;
+			row-gap: 0.4rem;
+			padding: 0.55rem 0;
+		}
+		.brand { margin-right: auto; }
+		.internal-links {
+			order: 3;
+			width: 100%;
+			border-top: 1px solid var(--line);
+			padding-top: 0.45rem;
+			justify-content: flex-start;
+		}
+	}
+
+	@media (max-width: 360px) {
+		.internal-links :global(a) { padding: 0 0.5rem; font-size: 0.78rem; }
+		.controls { gap: 0.6rem; }
+	}
 </style>
