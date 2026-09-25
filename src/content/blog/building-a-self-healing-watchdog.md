@@ -10,7 +10,7 @@ Here is the whole story. The wiring mistakes, the incidents that surfaced them, 
 
 ## Mistake one: a check that fired during warmup and restarted in a loop
 
-Our first relay check was blunt. If the proxy pool looked degraded, restart the relay. Straightforward, and wrong.
+One of the services it watches is a small proxy relay: a process that holds an outgoing connection pool and forwards traffic through it. Our first check against that relay was blunt. If the pool looked degraded, restart the relay. Straightforward, and wrong.
 
 The relay needs a few minutes to warm up and build its pool after any start. The check ran on a two minute cadence. The sequence was: pool looks thin during warmup, the check flags it, we restart the relay, the restart resets warmup, two minutes later the same thin pool appears, restart again. One routine deploy became two and a half hours and dozens of restarts, all with the pool at zero the whole time. Nothing was ever actually broken. The check's response to a normal startup state was the defect.
 
