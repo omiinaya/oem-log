@@ -26,7 +26,7 @@ const latest = posts.slice(0, 4);
 
 			<section class="hero">
 				<p class="kicker">things we learned · worth sharing</p>
-				<h1 class="hero-title">{SITE_TITLE}<span class="caret">▮</span></h1>
+				<h1 class="hero-title">{SITE_TITLE}</h1>
 				<p class="hero-desc">
 					Short writeups of things we've learned while shipping real systems:
 					the reusable trick, the gotcha that cost us time, and how to use it
@@ -102,7 +102,6 @@ const latest = posts.slice(0, 4);
 		line-height: 1.1;
 		margin-bottom: 1.3rem;
 	}
-	.hero-title .caret { color: var(--ink-faint); animation: blink 1.3s step-end infinite; }
 	@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 	.hero-desc {
 		color: var(--ink-dim);
