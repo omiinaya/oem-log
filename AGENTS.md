@@ -91,10 +91,10 @@ Design tokens live as CSS custom properties on `:root` (dark values) and `[data-
 - `--line` — borders
 - `--panel` — raised card background
 - `--radius-sm` — corner radius
-- `--maxw: 960px` — max content width
-- `--maxw-tight: 680px` — narrow reading column (posts, about)
+- `--maxw: 680px` — the ONE content width for every page
+- `--gutter: 1.25rem` — single source of side padding for `main`, `header` and `footer`
 
-The scrollbar is themed via `scrollbar-width: thin` + `scrollbar-color`, plus a `::-webkit-scrollbar` variant.
+The scrollbar is themed via `scrollbar-width: thin` + `scrollbar-color`, plus a `::-webkit-scrollbar` variant. `html { overflow-y: scroll }` permanently reserves the scrollbar gutter so short pages and scrolling pages get the same content width and nothing shifts sideways on navigation.
 
 ### Theme toggle (`src/components/Header.astro`)
 
@@ -103,11 +103,17 @@ The scrollbar is themed via `scrollbar-width: thin` + `scrollbar-color`, plus a 
 - A small **inline `is:inline` script** in the header runs before paint to read the stored value and set the theme attribute, preventing a flash of the wrong theme on load.
 - If you change localStorage key or add a theme, update that inline script and keep it executing early.
 
+### Layout stability (do not regress)
+
+- **One content width, site-wide.** `--maxw: 680px` applies to `main`, `nav` and `.footer-inner` alike. Do not add a per-page `max-width` or a `width: 100%` on a `main` subclass: a class selector beats the global `main` rule and silently widens that page only, which is exactly the sideways-jump bug this replaced.
+- **`--gutter` is the only side padding.** `main`, `header` and `footer` all pad with `var(--gutter)`, including inside the ≤680px media block. A hardcoded `1.25rem` in one place and a token in another will drift.
+- **The scrollbar gutter stays reserved** (`html { overflow-y: scroll }`). Removing it reintroduces a 12px content-width difference between short and scrolling pages.
+
 ### Mobile / responsive
 
-- Global responsive block in `global.css`: below 680px, `main` gets side padding (`1.5rem 1.25rem 4rem`), body 15px, `h1` shrinks, `pre` padding/font tuned.
+- Global responsive block in `global.css`: below 680px, `main` uses `padding: 1.5rem var(--gutter) 4rem`, body 15px, `h1` shrinks, `pre` padding/font tuned.
+- `main` is capped by `max-width: calc(100% - (2 * var(--gutter)))`, so the reading column is fluid down to phone widths with no hard 680px cap on small screens. There is no `.about-main` / `.post-main` width rule and there should not be one.
 - Header below 640px wraps: brand + theme toggle on row one, nav links on their own full-width row.
-- `.about-main` / `.post-main` use `max-width: var(--maxw-tight); width: 100%` so the reading column is fluid down to phone widths (no hard 680px cap on small screens).
 - `BlogPost.astro` has its own ≤680px block scaling article headings and tightening prose line-height for comfortable narrow-screen reading.
 
 ### Visual conventions baked into components

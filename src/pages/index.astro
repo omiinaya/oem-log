@@ -20,10 +20,6 @@ const latest = posts.slice(0, 4);
 	<body>
 		<Header />
 		<main>
-			<div class="prompt-line" aria-hidden="true">
-				<span>omiinaya@oem:~$ cat &amp;&amp; ls logs</span><span class="cursor"></span>
-			</div>
-
 			<section class="hero">
 				<p class="kicker">things we learned · worth sharing</p>
 				<h1 class="hero-title">{SITE_TITLE}</h1>
@@ -76,25 +72,7 @@ const latest = posts.slice(0, 4);
 </html>
 
 <style>
-	.prompt-line {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--ink-faint);
-		margin-bottom: 2.2rem;
-		white-space: nowrap;
-		overflow-x: auto;
-	}
-	.prompt-line .cursor {
-		display: inline-block;
-		width: 0.5em;
-		height: 0.95em;
-		background: var(--ink);
-		vertical-align: -0.1em;
-		margin-left: 0.15em;
-		animation: blink 1s step-end infinite;
-	}
-
-	.hero { padding: 0.5rem 0 2.5rem; max-width: var(--maxw-tight); }
+	.hero { padding: 0.5rem 0 2.5rem; }
 	.hero .kicker { margin-bottom: 1rem; }
 	.hero-title {
 		font-size: 2.2rem;
@@ -102,7 +80,6 @@ const latest = posts.slice(0, 4);
 		line-height: 1.1;
 		margin-bottom: 1.3rem;
 	}
-	@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 	.hero-desc {
 		color: var(--ink-dim);
 		font-size: 0.95rem;
@@ -188,7 +165,6 @@ const latest = posts.slice(0, 4);
 	.all-notes a:hover { color: var(--ink); }
 
 	@media (max-width: 680px) {
-		.prompt-line { display: none; }
 		.hero { padding: 1rem 0 2rem; }
 		.hero-title { font-size: 1.9rem; }
 		.post-desc { display: none; }

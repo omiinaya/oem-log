@@ -7,9 +7,11 @@
    ============================================================ */
 
 :root {
-	/* layout */
-	--maxw: 960px;
-	--maxw-tight: 680px;
+	/* layout — ONE content width for every page (680px). Page-specific
+	   widths were the cause of the layout shifting on every navigation.
+	   --gutter is the single source of side padding for main/header/footer. */
+	--maxw: 680px;
+	--gutter: 1.25rem;
 	--radius: 10px;
 	--radius-sm: 6px;
 
@@ -18,10 +20,14 @@
 		Menlo, Consolas, monospace;
 	--font-body: var(--font-mono);
 
-	/* scrollbar (dark default) */
+	/* scrollbar (dark default) — width:thin + always-visible gutter so
+	   short pages reserve the same 12px a scrolling page uses. Without this
+	   the content box differs by 12px between scrolling and non-scrolling
+	   pages and every navigation nudges the layout sideways. */
 	scrollbar-width: thin;
 	scrollbar-color: #3a3a3a #0a0a0a;
 }
+html { overflow-y: scroll; }
 
 /* ================= dark — DEFAULT ================= */
 :root,
@@ -131,9 +137,9 @@ body {
 
 main {
 	width: var(--maxw);
-	max-width: calc(100% - 2.5rem);
+	max-width: calc(100% - (2 * var(--gutter)));
 	margin: 0 auto;
-	padding: 2rem 0 6rem;
+	padding: 2rem var(--gutter) 6rem;
 }
 
 a {
@@ -241,10 +247,10 @@ th { background: var(--bg-3); color: var(--ink); }
 /* responsive */
 @media (max-width: 680px) {
 	main {
-		padding: 1.5rem 1.25rem 4rem;
+		padding: 1.5rem var(--gutter) 4rem;
 	}
 	body { font-size: 15px; }
 	h1 { font-size: 1.7rem; }
 	pre { padding: 1.1em 1.1em; font-size: 0.78rem; }
-	.prose { padding: 0 0.25rem; }
+	.prose { padding: 0; }
 }
