@@ -1,6 +1,6 @@
 ---
 title: 'Getting tracking data from FedEx consistently, but the hard way'
-description: 'We wanted tracking numbers to just work from our agents. What we got instead was a lesson in why FedEx sits behind Akamai, why its cookie only means something on the network exit that minted it, and why the browser was never the part we were stuck on.'
+description: 'We wanted tracking numbers to just work from our agents, and they do now. Getting there meant learning why FedEx sits behind Akamai, why its cookie stops working the moment the network exit changes, and why copying the browser was never enough.'
 pubDate: 'Sep 25 2026'
 ---
 
@@ -68,13 +68,13 @@ Lesson: a cookie from a protected site is usually part of a session, not a stand
 
 ## Mistake five: paying for the warm-up on every request
 
-The direct request worked, but only by first starting a browser to mint the session it needed. Every lookup paid for that startup: a stock browser, a residential exit, the page settling, cookies harvested, the API call, the browser closed. The API call itself was quick. The setup around it was the whole cost.
+The direct request worked, but only by first starting a browser to earn a session the API would accept. Every lookup paid for that startup: a stock browser, a residential exit, the page settling, cookies harvested, the API call, the browser closed. The API call itself was quick. The setup around it was the whole cost.
 
 That was acceptable for one command and terrible inside a larger application. A page that checked twenty shipments would spend most of its time starting browsers.
 
 How we got there: I had optimized the API call while treating the browser warm-up as setup that naturally belonged to every request. The warm-up was not part of each shipment lookup. It was the thing that made the session trustworthy, and that result could be reused until the session aged out.
 
-The first fix was straightforward. The tracker warmed once, held the cookie set and the exit it had been minted on, and reused both across many lookups. A `403` cleared the cached session, warmed a new one, and retried once. After the first request, each additional shipment took a few seconds instead of around forty.
+The first fix was straightforward. The tracker warmed once, then held on to that cookie set along with the exact network exit it had been created on, and reused both across many lookups. A `403` cleared the cached session, warmed a new one, and retried once. After the first request, each additional shipment took a few seconds instead of around forty.
 
 The next fix moved the warm-up out of the request path. We built a small local pool of persistent browser sessions. Each session had a fixed network exit, kept its own cookie jar warm, and refreshed that jar shortly before the four-minute session window closed. A tracking request borrowed a ready session, used the matching exit, and returned the result. If the pool was unavailable, the tracker could still warm its own browser as a fallback.
 
