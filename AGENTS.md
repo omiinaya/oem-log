@@ -91,8 +91,10 @@ Design tokens live as CSS custom properties on `:root` (dark values) and `[data-
 - `--line` — borders
 - `--panel` — raised card background
 - `--radius-sm` — corner radius
-- `--maxw: 680px` — the ONE content width for every page
+- `--maxw: 860px` — the ONE content width for every page
 - `--gutter: 1.25rem` — single source of side padding for `main`, `header` and `footer`
+- `--head-top: 3rem` — top offset of each page's head block (`.hero`, `.list-head`, `.about-head`, `.post-head`)
+- `--head-h1: 2rem` — font size of each page's `h1`
 
 The scrollbar is themed via `scrollbar-width: thin` + `scrollbar-color`, plus a `::-webkit-scrollbar` variant. `html { overflow-y: scroll }` permanently reserves the scrollbar gutter so short pages and scrolling pages get the same content width and nothing shifts sideways on navigation.
 
@@ -105,14 +107,16 @@ The scrollbar is themed via `scrollbar-width: thin` + `scrollbar-color`, plus a 
 
 ### Layout stability (do not regress)
 
-- **One content width, site-wide.** `--maxw: 680px` applies to `main`, `nav` and `.footer-inner` alike. Do not add a per-page `max-width` or a `width: 100%` on a `main` subclass: a class selector beats the global `main` rule and silently widens that page only, which is exactly the sideways-jump bug this replaced.
+- **One content width, site-wide.** `--maxw` applies to `main`, `nav` and `.footer-inner` alike. Do not add a per-page `max-width` or a `width: 100%` on a `main` subclass: a class selector beats the global `main` rule and silently widens that page only.
+- **One vertical start position, site-wide.** Every page's head block (`.hero`, `.list-head`, `.about-head`, `.post-head`) takes `padding: var(--head-top) 0 ...` and its `h1` uses `var(--head-h1)`. `main` has **no top padding**; `--head-top` is the only vertical offset. Giving `main` a top padding as well double-counts it and knocks the post page out of line.
 - **`--gutter` is the only side padding.** `main`, `header` and `footer` all pad with `var(--gutter)`, including inside the ≤680px media block. A hardcoded `1.25rem` in one place and a token in another will drift.
 - **The scrollbar gutter stays reserved** (`html { overflow-y: scroll }`). Removing it reintroduces a 12px content-width difference between short and scrolling pages.
+- The ≤680px block overrides `--head-top: 2rem` and `--head-h1: 1.7rem` from `:root`. Do not re-add page-local h1 font sizes; they are what made every route's heading a different size.
 
 ### Mobile / responsive
 
-- Global responsive block in `global.css`: below 680px, `main` uses `padding: 1.5rem var(--gutter) 4rem`, body 15px, `h1` shrinks, `pre` padding/font tuned.
-- `main` is capped by `max-width: calc(100% - (2 * var(--gutter)))`, so the reading column is fluid down to phone widths with no hard 680px cap on small screens. There is no `.about-main` / `.post-main` width rule and there should not be one.
+- Global responsive block in `global.css`: below 680px, `main` uses `padding: 0 var(--gutter) 4rem`, `--head-top` drops to `2rem` and `--head-h1` to `1.7rem`, body 15px, `pre` padding/font tuned.
+- `main` is capped by `max-width: calc(100% - (2 * var(--gutter)))`, so the reading column is fluid down to phone widths with no hard `--maxw` cap on small screens. There is no `.about-main` / `.post-main` width rule and there should not be one.
 - Header below 640px wraps: brand + theme toggle on row one, nav links on their own full-width row.
 - `BlogPost.astro` has its own ≤680px block scaling article headings and tightening prose line-height for comfortable narrow-screen reading.
 

@@ -48,9 +48,9 @@ const posts = (await getCollection('blog')).sort(
 </html>
 
 <style>
-	.list-head { padding: 2.5rem 0 2rem; }
+	.list-head { padding: var(--head-top) 0 2rem; }
 	.list-head .kicker { margin-bottom: 0.8rem; }
-	.list-head h1 { font-size: 2rem; margin-bottom: 0.6rem; letter-spacing: -0.01em; }
+	.list-head h1 { font-size: var(--head-h1); margin-bottom: 0.6rem; letter-spacing: -0.01em; }
 	.list-head .sub {
 		color: var(--ink-faint);
 		font-family: var(--font-mono);

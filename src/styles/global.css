@@ -7,11 +7,15 @@
    ============================================================ */
 
 :root {
-	/* layout — ONE content width for every page (680px). Page-specific
-	   widths were the cause of the layout shifting on every navigation.
-	   --gutter is the single source of side padding for main/header/footer. */
-	--maxw: 680px;
+	/* layout — ONE content width for every page. Page-specific widths were
+	   the cause of the layout shifting on every navigation. --gutter is the
+	   single source of side padding for main/header/footer, and --head-top
+	   / --head-h1 are the single source for the top-of-page head block so
+	   every route starts its content at the same y. */
+	--maxw: 860px;
 	--gutter: 1.25rem;
+	--head-top: 3rem;
+	--head-h1: 2rem;
 	--radius: 10px;
 	--radius-sm: 6px;
 
@@ -139,7 +143,10 @@ main {
 	width: var(--maxw);
 	max-width: calc(100% - (2 * var(--gutter)));
 	margin: 0 auto;
-	padding: 2rem var(--gutter) 6rem;
+	/* no top padding: --head-top (on each page's head block) is the single
+	   source for vertical start position. Padding here too would double it
+	   and put the post page out of line with the rest. */
+	padding: 0 var(--gutter) 6rem;
 }
 
 a {
@@ -247,8 +254,9 @@ th { background: var(--bg-3); color: var(--ink); }
 /* responsive */
 @media (max-width: 680px) {
 	main {
-		padding: 1.5rem var(--gutter) 4rem;
+		padding: 0 var(--gutter) 4rem;
 	}
+	:root { --head-top: 2rem; --head-h1: 1.7rem; }
 	body { font-size: 15px; }
 	h1 { font-size: 1.7rem; }
 	pre { padding: 1.1em 1.1em; font-size: 0.78rem; }
