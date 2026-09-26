@@ -51,7 +51,7 @@ const latest = posts.slice(0, 4);
 							latest.map((post, i) => (
 								<li>
 									<a href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
-										<span class="post-idx">0{i + 1}</span>
+										<span class="post-idx">{String(posts.length - i).padStart(2, '0')}</span>
 										<span class="post-body">
 											<span class="post-title">{post.data.title}</span>
 											<span class="post-desc">{post.data.description}</span>

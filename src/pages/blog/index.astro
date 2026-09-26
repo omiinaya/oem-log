@@ -30,7 +30,7 @@ const posts = (await getCollection('blog')).sort(
 					posts.map((post, i) => (
 						<li>
 							<a href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
-								<span class="post-num">0{posts.length - i}</span>
+								<span class="post-num">{String(posts.length - i).padStart(2, '0')}</span>
 								<div class="post-body">
 									<h2>{post.data.title}</h2>
 									<p class="post-desc">{post.data.description}</p>
