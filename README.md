@@ -2,7 +2,7 @@
 
 A dark, terminal-edged dev blog built with [Astro](https://astro.build), published as a static site on GitHub Pages.
 
-- **Live:** <https://omiinaya.github.io/oem-log/>
+- **Live:** <https://log.oem.ngo/> (the old `omiinaya.github.io/oem-log/` URL redirects here)
 - **Static site:** no server runtime, no database. GitHub Actions builds `./dist/` and deploys it to Pages on every push to `main`.
 
 ## Requirements
@@ -30,12 +30,14 @@ npm run dev      # http://localhost:4321
 
 ### Site URL and base path (`astro.config.mjs`)
 
-The site lives at a sub-path, not the repo root, so two settings must stay in sync:
+The site is served at a custom domain, which means the domain root, so two settings must stay in sync:
 
-- `site: 'https://omiinaya.github.io/oem-log/'`
-- `base: '/oem-log/'`
+```js
+site: 'https://log.oem.ngo/',
+base: '/',
+```
 
-The `base` is the GitHub Pages project-site sub-path. **Every internal link** must be base-aware — in this codebase that means using `import.meta.env.BASE_URL` (see AGENTS.md), never a hardcoded `href="/..."`.
+**Every internal link** must be base-aware — in this codebase that means using `import.meta.env.BASE_URL` (see AGENTS.md), never a hardcoded `href="/..."`. If `base` and the host actually serving the build ever disagree, the stylesheet 404s and the whole site renders unstyled.
 
 Fonts are configured here too via `fontProviders.local()` (Atkinson regular/bold from `src/assets/fonts/`).
 

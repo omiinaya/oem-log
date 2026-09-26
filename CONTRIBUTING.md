@@ -57,7 +57,7 @@ Edit `src/consts.ts`: `SITE_TITLE`, `SITE_DESCRIPTION`, author fields. Component
 
 Edit `astro.config.mjs`:
 - `site` = canonical URL
-- `base` = sub-path the site is served under (currently `/oem-log/` for the GitHub Pages project site)
+- `base` = path the site is served under (currently `/` — the custom domain `log.oem.ngo` is served at the root, not under a project sub-path)
 
 **When changing `base`, re-check every internal link.** They must use `import.meta.env.BASE_URL`; if you hardcode `/...` paths they will break under a non-root base.
 

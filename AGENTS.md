@@ -5,7 +5,7 @@ This blog is a small Astro static site. This file tells you how it is configured
 ## Quick reference
 
 - **What it runs on:** Astro 7 static site generation, Node >= 22.12.
-- **Where it's deployed:** GitHub Pages at `https://omiinaya.github.io/oem-log/` (project site under `/oem-log/`).
+- **Where it's deployed:** GitHub Pages at the custom domain `https://log.oem.ngo/` (served at the root, fronted by Cloudflare). The old `omiinaya.github.io/oem-log/` path auto-301s here.
 - **How it deploys:** `.github/workflows/deploy.yml` builds `./dist/` and publishes on every push to `main`.
 - **Author identity for commits:** always commit as `omiinaya <omar@mrxlab.net>`. This is set repo-locally; the box's global git identity is a real name that must never appear in this repo's history.
 
@@ -42,14 +42,43 @@ sketches/                throwaway design mockups; gitignored
 
 ### Site URL + base path (`astro.config.mjs`)
 
-The site is a Pages **project** site, so it lives under `/oem-log/`, not the domain root. Two values must stay consistent:
+The site is served from the custom domain **`log.oem.ngo`**, not a Pages project path. A custom
+domain is served at the **root**, so `base` must be `/`:
 
 ```js
-site: 'https://omiinaya.github.io/oem-log/',
-base: '/oem-log/',
+site: 'https://log.oem.ngo/',
+base: '/',
 ```
 
-**Rule: no hardcoded root-absolute links.** Any internal `href`/`src` that points into the site must be base-aware via `import.meta.env.BASE_URL`. Hardcoding `href="/about/"` breaks under the `/oem-log/` prefix. Existing examples: `Header.astro` (brand + nav), `HeaderLink.astro` (strips base from pathname for active state), `BaseHead.astro` (favicon, sitemap). Searching the built `dist/` for `(href|src)="/` that is not base-prefixed is a good post-build check.
+**Rule: no hardcoded root-absolute links.** Any internal `href`/`src` that points into the site must be base-aware via `import.meta.env.BASE_URL`. Existing examples: `Header.astro` (brand + nav), `HeaderLink.astro` (strips base from pathname for active state), `BaseHead.astro` (favicon, sitemap). Searching the built `dist/` for `(href|src)="/` that is not base-prefixed is a good post-build check.
+
+**If `base` is ever wrong, the site looks unstyled rather than broken.** Assets are emitted at
+`/_astro/*` when `base` is `/` and at `/oem-log/_astro/*` when it is the project path. A mismatch
+between the configured `base` and the host actually serving the build produces a 404 on the
+stylesheet, and the page renders as unstyled default Times New Roman while the HTML is all correct.
+When someone reports "the CSS broke", check `document.querySelector('link[rel=stylesheet]').href`
+against the host first, and read the body background/font, before suspecting the design system.
+
+**Custom domain registration lives in the GitHub API, not `public/CNAME`.** With
+`build_type: workflow`, `public/CNAME` is uploaded into the artifact and ignored:
+
+```bash
+gh api repos/omiinaya/oem-log/pages --jq '{cname,html_url,https_enforced}'
+gh api -X PUT repos/omiinaya/oem-log/pages -F cname=log.oem.ngo
+```
+
+`cname: null` means GitHub serves "Site not found" while still returning a valid
+`x-github-request-id`. `public/oem-log/index.html` is a hand-written redirect shim left from the
+move: it is **dead weight**, because GitHub auto-301s the old `<user>.github.io/<project>/` path once
+`cname` is registered, before any file is served. Harmless, but do not credit it with fixing
+anything, and do not assume it is the thing redirecting.
+
+**TLS is terminated at Cloudflare, not at the GitHub origin.** `https_enforced` stays `false` and
+should: GitHub never provisions an origin cert for a hostname proxied through Cloudflare, so
+flipping it fails permanently with "The certificate does not exist yet". TLS posture is enforced on
+the Cloudflare zone instead (`always_use_https = on`, `min_tls_version = 1.2`). Turning on
+`always_use_https` is what closes the plaintext hop in GitHub's own auto-301, which targets
+`http://` whenever `https_enforced` is false.
 
 ### Global data (`src/consts.ts`)
 
@@ -73,7 +102,7 @@ Post frontmatter is validated through a Zod schema in `astro:content`. Invalid o
 
 ### Deploy gotchas
 
-- The live site URL is `https://omiinaya.github.io/oem-log/` (trailing slash, sub-path). Never point the browser the wrong way.
+- The live site URL is `https://log.oem.ngo/` (custom domain, served at the root). Never point the browser the wrong way.
 - `dist/` and `.astro/` are gitignored and never committed; they are build artifacts produced fresh in CI.
 - `sketches/` is gitignored — throwaway HTML mockups, not part of the shipped site.
 - Astro/lightningcss compiles `@media (max-width: Npx)` into modern range syntax `@media (width<=Npx)`. Valid in modern browsers, but note it when grepping built CSS for media queries.

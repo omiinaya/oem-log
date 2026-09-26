@@ -8,7 +8,7 @@ Astro static dev blog deployed to GitHub Pages. Node >= 22.12. Every push to `ma
 
 ## Critical rules (violating these breaks things)
 
-1. **`base: '/oem-log/'`** is set in `astro.config.mjs`. Every internal link must use `import.meta.env.BASE_URL` — never a hardcoded `href="/..."`. (BaseHead, Header, HeaderLink already do this.)
+1. **`base: '/'`** is set in `astro.config.mjs` (custom domain, served at the root). Every internal link must use `import.meta.env.BASE_URL` — never a hardcoded `href="/..."`. (BaseHead, Header, HeaderLink already do this.)
 2. **`src/content.config.ts` validates post frontmatter.** Missing `title`/`description`/`pubDate` fails the build. Run `npm run build` to catch it.
 3. **Commit as `omiinaya <omar@mrxlab.net>`** (repo-local identity). The box's global git identity is a real name and must not appear in this repo.
 4. **Don't commit** `dist/`, `.astro/`, `node_modules/`, `sketches/` (all gitignored).

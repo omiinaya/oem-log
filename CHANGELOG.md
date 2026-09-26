@@ -4,7 +4,16 @@ All notable changes to oem/log. Format loosely follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-- (nothing yet — add in-flight work here)
+### Changed
+
+- **Moved the site to the custom domain `log.oem.ngo`.** `site` is now `https://log.oem.ngo/` and `base` is `/` (a custom domain is served at the root, not under a project sub-path). The old `omiinaya.github.io/oem-log/` URL is auto-301'd by GitHub Pages to the new domain.
+  - `85161ac` — Move the blog to log.oem.ngo
+  - Documentation updated across `README.md`, `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` to describe the custom-domain topology, why a `base` mismatch renders the site unstyled rather than broken, and why `public/CNAME` is ignored under `build_type: workflow`.
+
+### Deployment notes (not a code change)
+
+- `public/oem-log/index.html` is a hand-written redirect shim from the move. It is **dead weight**: GitHub auto-301s the old project path before any file is served. Left in place, harmless, but it is not what performs the redirect.
+- `https_enforced` is `false` on the Pages site and stays that way. GitHub never provisions an origin cert for a hostname proxied through Cloudflare, so setting it fails permanently with "The certificate does not exist yet". TLS is enforced on the Cloudflare zone instead: `always_use_https = on` and `min_tls_version = 1.2`. Turning on `always_use_https` is what closes the plaintext hop in GitHub's own auto-301.
 
 ## [0.1.0] — 2026-09-24
 
