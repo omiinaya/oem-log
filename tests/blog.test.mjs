@@ -54,6 +54,32 @@ test('the old hand-written design system is gone', () => {
 		'src/styles/global.css still exists; it re-declared the whole design system');
 });
 
+test('emphasis is left to the library, not re-declared per page', () => {
+	// The blog used to own `strong` TWICE - once in the home page's scoped
+	// block and once on /about - because oem-ui had no rule for it. That is
+	// the whole failure this library exists to prevent: a second
+	// implementation of surface the design system owns, so a library fix
+	// never reaches the page.
+	//
+	// A scoped, comment-stripped scan, so a COMMENT explaining the removal
+	// is not read as the rule coming back. The vendored base layer is
+	// skipped: it legitimately declares the element default, and that is the
+	// one place it is allowed.
+	for (const f of astroFiles()) {
+		if (f.includes(`${root}src/styles`)) continue;
+		const blocks = (readFileSync(f, 'utf8').match(/<style>[\s\S]*?<\/style>/g) || [])
+			.map(stripComments).join('\n');
+		for (const m of blocks.matchAll(/(^|[\s,}])(strong|\bb)\b[^{}]*\{/g)) {
+			assert.fail(`${f.replace(root, '')} re-declares an element the library already owns: ${m[0].trim()}`);
+		}
+	}
+	// ...and the library really does declare it, or this test would be
+	// green for the wrong reason: guarding a rule that does not exist yet.
+	const base = stripComments(read('src/styles/cli-mono/base.css'));
+	assert.ok(/(^|\n)strong,\s*b\s*\{/.test(base),
+		'the vendored base layer has no strong/b element default to inherit');
+});
+
 test('the vendored layers are byte-identical to the library', () => {
 	// oem-ui's own check-design-sync.sh proves this across the fleet; this
 	// pins it in the blog's own suite so `npm test` alone catches it.

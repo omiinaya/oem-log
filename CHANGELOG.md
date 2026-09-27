@@ -6,6 +6,27 @@ All notable changes to oem/log. Format loosely follows [Keep a Changelog](https:
 
 ### Changed
 
+- **Emphasis is no longer declared twice on this site.** `index.astro`
+  and `about.astro` each carried their own `strong` rule in a scoped
+  block, because oem-ui had no rule for a bare `<strong>` and the browser
+  default is weight-only — inside an `--ink-dim` paragraph there was
+  nothing but stroke weight to read. oem-ui now owns it as an **element
+  default** in `base.css`, so both scoped rules are gone.
+
+  Measured in WebKit at 390px, the consumer rule and the library rule
+  render identically: a bare `<strong>` (no class) computes to
+  `rgb(232,232,232)` = `--ink` at weight 700 inside `rgb(156,156,156)`
+  = `--ink-dim` prose. Delete the library rule and the same element
+  computes to `rgb(156,156,156)` — identical to its paragraph, with no
+  visual distinction at all, which is the regression these two rules
+  were papering over.
+
+  Two new consumer tests, both mutation-checked (`tests/mutate-blog.mjs`
+  now 14 mutations, all killed): one fails if a scoped block
+  re-declares the element, the other fails if the library rule is
+  missing, since guarding a rule that does not exist is a green test
+  for the wrong reason.
+
 - **Moved the site to the custom domain `log.oem.ngo`.** `site` is now `https://log.oem.ngo/` and `base` is `/` (a custom domain is served at the root, not under a project sub-path). The old `omiinaya.github.io/oem-log/` URL is auto-301'd by GitHub Pages to the new domain.
   - `85161ac` — Move the blog to log.oem.ngo
   - Documentation updated across `README.md`, `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` to describe the custom-domain topology, why a `base` mismatch renders the site unstyled rather than broken, and why `public/CNAME` is ignored under `build_type: workflow`.

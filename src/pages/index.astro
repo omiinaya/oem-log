@@ -96,7 +96,11 @@ const latest = posts.slice(0, 4);
 		line-height: 1.7;
 		margin-bottom: 1.8rem;
 	}
-	.hero-desc strong { color: var(--ink); font-weight: 700; }
+	/* Emphasis needs no rule here: oem-ui declares it as an element
+	   default in the base layer, so a bare <strong> in this paragraph is
+	   already --ink at weight 700. Re-declaring it in a scoped block would
+	   be a second owner for a rule the library owns, and a cascade race
+	   if the two ever disagreed. */
 	.hero-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; }
 	.btn-primary {
 		display: inline-flex;

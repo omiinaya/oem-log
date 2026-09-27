@@ -52,7 +52,24 @@ const MUTANTS = [
 
 	['leave a dead class behind in a scoped style block', 'src/components/Footer.astro',
 		'.footer-meta a:hover { color: var(--ink); }',
-		'.footer-meta a:hover { color: var(--ink); }\n\t.never-used-thing { color: red; }'],
+		'.footer-meta a:hover { color: var(--ink); }\n	.never-used-thing { color: red; }'],
+
+	// The duplication the migration removed. Re-adding it in a scoped block
+	// is a second owner for a rule the library owns.
+	['re-declare emphasis in a scoped block', 'src/pages/index.astro',
+		'	.hero-actions { display: flex;',
+		'	.hero-desc strong { color: var(--ink); }\n	.hero-actions { display: flex;'],
+
+	['re-declare emphasis on a second page too', 'src/pages/about.astro',
+		'	.about-body p:first-of-type { margin-top: 0; }',
+		'	.about-body strong { color: var(--ink); }\n	.about-body p:first-of-type { margin-top: 0; }'],
+
+	// Guarding a rule that does not exist is a green test for the wrong
+	// reason, so removing the library side must also be caught.
+	['remove the library element default, leaving the consumer guarding nothing',
+		'src/styles/cli-mono/base.css',
+		'strong, b { color: var(--ink); font-weight: 700; }',
+		'/* strong, b removed by mutation */'],
 ];
 
 let killed = 0, missed = 0, noop = 0;
