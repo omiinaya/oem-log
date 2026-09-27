@@ -59,6 +59,13 @@ const today = new Date();
 		color: var(--ink-faint);
 	}
 	.ok { color: var(--ink-dim); margin-right: 0.35em; }
-	.ok + span { margin-right: 1.2em; }
-	.bar { color: var(--ink-faint); margin-right: 1.2em; }
+	/* The bar is a SIBLING element sitting directly against a TEXT node,
+	   so there is no whitespace between them: the footer read
+	   "all systems nominal|". A margin on the text is impossible (it is a
+	   bare text node), so the space has to go on the bar's own left edge. */
+	.bar {
+		color: var(--ink-faint);
+		margin-left: 0.9em;
+		margin-right: 0.9em;
+	}
 </style>
