@@ -172,11 +172,17 @@ import HeaderLink from './HeaderLink.astro';
 			padding-top: 0.45rem;
 			justify-content: flex-start;
 		}
-		/* Once the nav WRAPS the pipes are a lie: they only exist between
-		   items in the DOM, so a wrapped row opens with no pipe and closes with
-		   a dangling one. Drop them and let the row gap separate the items, and
-		   return the first item to the content rail. */
-		.internal-links :global(a) { padding: 0 0.55rem; }
+		/* The base layer gives every <a> min-height:var(--tap) for the WCAG
+		   2.5.5 tap target. These links carry no vertical padding, so the
+		   text sat at the TOP of that 44px box and all the slack pooled
+		   below it, which read as a lopsided, oddly gappy nav row. Centre
+		   the text in the target box instead: the tap area is unchanged,
+		   the optical spacing is not. */
+		.internal-links :global(a) {
+			padding: 0 0.55rem;
+			display: flex;
+			align-items: center;
+		}
 		.internal-links :global(a:first-child) { padding-left: 0; }
 		.internal-links :global(a + a)::before { content: none; }
 	}
