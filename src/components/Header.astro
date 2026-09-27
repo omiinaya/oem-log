@@ -125,21 +125,24 @@ import HeaderLink from './HeaderLink.astro';
 		text-decoration-color: var(--ink-faint);
 	}
 	.controls { display: flex; align-items: center; gap: 0.85rem; }
+	/* Both controls are bare glyphs on the header surface: no box, no border.
+	   An outlined button next to an unoutlined one reads as a mistake. */
 	.theme-toggle {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		width: 32px;
 		height: 32px;
-		border: 1px solid var(--line);
-		border-radius: 6px;
+		padding: 0;
+		border: 0;
 		background: transparent;
 		color: var(--ink-dim);
 		cursor: pointer;
 		font-size: 0.95rem;
-		transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+		transition: color 0.12s ease, background 0.12s ease;
 	}
-	.theme-toggle:hover { color: var(--ink); border-color: var(--ink-dim); background: var(--bg-2); }
+	.theme-toggle:hover { color: var(--ink); background: var(--bg-2); }
+	.theme-toggle:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 	.controls a { display: flex; align-items: center; color: var(--ink-faint); transition: color 0.12s ease; }
 	.controls a:hover { color: var(--ink); }
 
