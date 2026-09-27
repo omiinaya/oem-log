@@ -12,15 +12,25 @@ const posts = (await getCollection('blog')).sort(
 ---
 
 <!doctype html>
-<html lang="en">
+<html
+	lang="en"
+	data-cm-theme-key="oem-log-theme"
+	data-cm-theme-legacy="cm-theme"
+>
 	<head>
 		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+		<!-- The theme preference lives under this project's own key (on <html>
+		     above) and the library's runtime owns the toggle. Imported so Vite
+		     bundles it: a raw src path is emitted verbatim and never shipped. -->
+		<script>
+			import '../../js/cli-mono.js';
+		</script>
 	</head>
 	<body>
 		<Header />
 		<main>
 			<section class="list-head">
-				<p class="kicker">all notes</p>
+				<p class="cm-kicker">all notes</p>
 				<h1>Index</h1>
 				<p class="sub">{posts.length} note{posts.length === 1 ? '' : 's'} · newest first</p>
 			</section>
@@ -49,7 +59,7 @@ const posts = (await getCollection('blog')).sort(
 
 <style>
 	.list-head { padding: var(--head-top) 0 2rem; }
-	.list-head .kicker { margin-bottom: 0.8rem; }
+	.list-head .cm-kicker { margin-bottom: 0.8rem; }
 	.list-head h1 { font-size: var(--head-h1); margin-bottom: 0.6rem; letter-spacing: -0.01em; }
 	.list-head .sub {
 		color: var(--ink-faint);
@@ -70,12 +80,16 @@ const posts = (await getCollection('blog')).sort(
 		transition: background 0.1s ease;
 	}
 	.post-grid a:hover { background: var(--panel); }
-	.post-num { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-faint); min-width: 2.8rem; }
+	.post-num { font-family: var(--font-mono); font-size: max(var(--min-font), 0.78rem); color: var(--ink-faint); min-width: 2.8rem; }
 	.post-body { flex: 1; min-width: 0; }
 	.post-body h2 { margin: 0 0 0.3rem; font-size: 1.15rem; color: var(--ink); }
 	.post-grid a:hover h2 { color: var(--ink); }
 	.post-desc { margin: 0 0 0.3rem; color: var(--ink-faint); font-size: 0.85rem; line-height: 1.5; }
-	.post-date { margin: 0; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-faint); }
+	/* FormattedDate renders a bare <time> element, so the font-size on this
+	   <p> is only an inherited default: the child resolved to 11.52px on a
+	   phone. Target the element that actually carries the text. */
+	.post-date { margin: 0; font-family: var(--font-mono); color: var(--ink-faint); }
+	.post-date :global(time) { font-size: max(var(--min-font), 0.72rem); }
 	.arrow { color: var(--ink-faint); font-size: 1rem; transition: color 0.12s ease, transform 0.12s ease; }
 	.post-grid a:hover .arrow { color: var(--ink); transform: translateX(3px); }
 

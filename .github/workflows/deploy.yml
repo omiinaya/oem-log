@@ -31,6 +31,11 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Contract tests
+        # The blog had no suite, which is half of why a vendored-but-
+        # never-imported design system went unnoticed. Runs here so the
+        # migration cannot silently rot back.
+        run: npm test
       - name: Build site
         run: npm run build
       - name: Upload Pages artifact

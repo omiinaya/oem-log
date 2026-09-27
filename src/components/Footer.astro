@@ -7,9 +7,7 @@ const today = new Date();
 	<div class="footer-inner">
 		<div class="footer-meta">
 			<span>© {today.getFullYear()} {AUTHOR_HANDLE}</span>
-			<span class="dot" aria-hidden="true">·</span>
 			<span>build with astro · static · no tracking</span>
-			<span class="dot" aria-hidden="true">·</span>
 			<a href={`mailto:${AUTHOR_EMAIL}`}>contact</a>
 		</div>
 	</div>
@@ -28,25 +26,35 @@ const today = new Date();
 		margin-top: 3rem;
 	}
 	.footer-inner { max-width: var(--maxw); margin: 0 auto; }
+	/* One flex row of standalone items, each `·` its own span: when the
+	   row wraps, a separator can land at the end of a line with nothing
+	   after it. Measured at 390px - the meta wrapped to three lines with
+	   a trailing `·` on the first two. The separator is now a ::after ON
+	   the item it follows, so it belongs to that item and can never be
+	   the last thing on a line. */
 	.footer-meta {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 0.6rem;
+		gap: 0.25rem 0.6rem;
 		color: var(--ink-faint);
 		font-size: 0.78rem;
 		font-family: var(--font-mono);
 	}
+	.footer-meta > *:not(:last-child)::after {
+		content: '·';
+		opacity: 0.6;
+		margin-left: 0.6rem;
+	}
 	.footer-meta a { color: var(--ink-dim); transition: color 0.12s ease; }
 	.footer-meta a:hover { color: var(--ink); }
-	.dot { opacity: 0.6; }
 	.footer-status {
 		max-width: var(--maxw);
 		margin: 1.4rem auto 0;
 		padding-top: 1rem;
 		border-top: 1px dashed var(--line);
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: max(var(--min-font), 0.72rem);
 		letter-spacing: 0.02em;
 		color: var(--ink-faint);
 	}

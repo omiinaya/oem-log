@@ -1,0 +1,27 @@
+/* ============================================================
+   oem/log — the site's own layer.
+
+   Almost everything here is oem-ui. The three design-system
+   layers own every token, every .cm-* component, both themes and
+   the element defaults; they are imported first, in order, from
+   src/components/BaseHead.astro. What is left here is only what
+   is genuinely specific to this blog.
+
+   If a rule appears here that could be expressed with an existing
+   .cm-* class or a token, it belongs in oem-ui instead.
+
+   This file replaced a 264-line global.css that re-declared the
+   whole design system - tokens, base elements and three component
+   classes - copied from the library and left to drift. That drift
+   is why the blog's secondary text sat at 2.66:1 contrast while
+   every other consumer on the library sat above 4.5:1. The token
+   values now live in the oem-ui layers and its contrast test
+   covers them.
+   ============================================================ */
+
+/* ---- the one override this site genuinely needs ---------------
+   oem/log runs a prose column at the shared 860px, so there is no
+   local width override. It is here to document that the decision
+   was made and not forgotten: the blog is the widest consumer on
+   the fleet, and links/oem-portfolio each narrow --maxw locally
+   rather than bending the shared token. */

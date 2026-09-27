@@ -6,15 +6,25 @@ import { AUTHOR_EMAIL, AUTHOR_GITHUB, SITE_DESCRIPTION, SITE_TITLE } from '../co
 ---
 
 <!doctype html>
-<html lang="en">
+<html
+	lang="en"
+	data-cm-theme-key="oem-log-theme"
+	data-cm-theme-legacy="cm-theme"
+>
 	<head>
 		<BaseHead title={`About · ${SITE_TITLE}`} description={SITE_DESCRIPTION} />
+		<!-- The theme preference lives under this project's own key (on <html>
+		     above) and the library's runtime owns the toggle. Imported so Vite
+		     bundles it: a raw src path is emitted verbatim and never shipped. -->
+		<script>
+			import '../js/cli-mono.js';
+		</script>
 	</head>
 	<body>
 		<Header />
 		<main class="about-main">
 			<section class="about-head">
-				<p class="kicker">about</p>
+				<p class="cm-kicker">about</p>
 				<h1>This blog</h1>
 			</section>
 
@@ -47,7 +57,7 @@ import { AUTHOR_EMAIL, AUTHOR_GITHUB, SITE_DESCRIPTION, SITE_TITLE } from '../co
 
 <style>
 	.about-head { padding: var(--head-top) 0 2rem; }
-	.about-head .kicker { margin-bottom: 0.8rem; }
+	.about-head .cm-kicker { margin-bottom: 0.8rem; }
 	.about-head h1 { font-size: var(--head-h1); margin: 0; letter-spacing: -0.01em; }
 
 	.about-body {

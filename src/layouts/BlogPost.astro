@@ -12,9 +12,19 @@ type Props = CollectionEntry<'blog'>['data'];
 const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 ---
 
-<html lang="en">
+<html
+	lang="en"
+	data-cm-theme-key="oem-log-theme"
+	data-cm-theme-legacy="cm-theme"
+>
 	<head>
 		<BaseHead title={title} description={description} />
+		<!-- The theme preference lives under this project's own key (on <html>
+		     above) and the library's runtime owns the toggle. Imported so Vite
+		     bundles it: a raw src path is emitted verbatim and never shipped. -->
+		<script>
+			import '../js/cli-mono.js';
+		</script>
 	</head>
 
 	<body>
@@ -26,9 +36,9 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 						<Image width={1020} height={510} src={heroImage} alt="" />
 					</div>
 				)}
-				<div class="prose">
+				<div class="cm-prose">
 					<header class="post-head">
-						<p class="kicker">note</p>
+						<p class="cm-kicker">note</p>
 						<h1>··· {title} ···.md</h1>
 						<div class="byline">
 							<span>@{AUTHOR_HANDLE}</span>
@@ -56,13 +66,13 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 	.hero-image { margin: 1rem 0 2rem; }
 	.hero-image img { display: block; width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--line); }
 
-	.prose { color: var(--ink); font-size: 0.95rem; }
+	.cm-prose { color: var(--ink); font-size: 0.95rem; }
 	.post-head {
 		margin-bottom: 2.2rem;
 		padding: var(--head-top) 0 1.6rem;
 		border-bottom: 1px solid var(--line);
 	}
-	.post-head .kicker { margin-bottom: 0.9rem; }
+	.post-head .cm-kicker { margin-bottom: 0.9rem; }
 	.post-head h1 { font-size: var(--head-h1); line-height: 1.15; margin-bottom: 1.1rem; letter-spacing: -0.01em; }
 	.byline {
 		display: flex;
@@ -76,16 +86,16 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 	.sep { opacity: 0.6; }
 	.updated { color: var(--ink-faint); }
 
-	.prose :global(h2) { margin-top: 2em; }
-	.prose :global(h3) { margin-top: 1.6em; }
-	.prose :global(h2::before) { content: '## '; color: var(--ink-faint); }
-	.prose :global(a) { color: var(--ink-dim); }
-	.prose :global(a:hover) { color: var(--ink); }
+	.cm-prose :global(h2) { margin-top: 2em; }
+	.cm-prose :global(h3) { margin-top: 1.6em; }
+	.cm-prose :global(h2::before) { content: '## '; color: var(--ink-faint); }
+	.cm-prose :global(a) { color: var(--ink-dim); }
+	.cm-prose :global(a:hover) { color: var(--ink); }
 
 	@media (max-width: 680px) {
 		.post-head h1 { line-height: 1.25; }
-		.prose :global(h2) { font-size: 1.15rem; line-height: 1.3; }
-		.prose :global(h3) { font-size: 1.05rem; }
-		.prose { line-height: 1.8; }
+		.cm-prose :global(h2) { font-size: 1.15rem; line-height: 1.3; }
+		.cm-prose :global(h3) { font-size: 1.05rem; }
+		.cm-prose { line-height: 1.8; }
 	}
 </style>
