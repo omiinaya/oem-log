@@ -8,6 +8,10 @@ import '../styles/cli-mono/tokens.css';
 import '../styles/cli-mono/base.css';
 import '../styles/cli-mono/components.css';
 import '../styles/site.css';
+// The FOUC guard, from the library. Inlined with ?raw so it runs before any
+// stylesheet; an external script tag would run after them, which is the
+// flash the guard exists to prevent.
+import themeGuard from '../js/cli-mono-theme-guard.js?raw';
 import type { ImageMetadata } from 'astro';
 import { SITE_TITLE } from '../consts';
 import { Font } from 'astro:assets';
@@ -29,35 +33,14 @@ const { title, description } = Astro.props;
 	renders inside <body> — so it ran after the stylesheets had already
 	painted, which is precisely the flash it exists to prevent.
 
-	The key list is read from <html> (this project declares
-	data-cm-theme-key="oem-log-theme" and data-cm-theme-legacy="cm-theme")
-	rather than typed here, so this guard and the library runtime cannot
-	disagree about where the saved theme lives.
+	Now inlined from the library's own guard file. The key list is read
+	from the root element (this project declares data-cm-theme-key and
+	data-cm-theme-legacy) rather than typed here, so this guard and the
+	library runtime cannot disagree about where the saved theme lives,
+	and a fix to the guard reaches every consumer instead of one copy
+	per project.
 -->
-<script is:inline>
-	(function () {
-		try {
-			var d = document.documentElement;
-			var g = function (a) {
-				try {
-					return d.getAttribute(a);
-				} catch (e) {
-					return null;
-				}
-			};
-			var k = (g('data-cm-theme-key') || 'oem-log-theme')
-				.split(',')
-				.concat((g('data-cm-theme-legacy') || 'cm-theme').split(','));
-			for (var i = 0; i < k.length; i++) {
-				var s = localStorage.getItem(k[i].trim());
-				if (s === 'light' || s === 'dark') {
-					if (s === 'light') d.setAttribute('data-theme', 'light');
-					return;
-				}
-			}
-		} catch (e) {}
-	})();
-</script>
+<script is:inline set:html={themeGuard} />
 
 <!-- Global Metadata -->
 <meta charset="utf-8" />

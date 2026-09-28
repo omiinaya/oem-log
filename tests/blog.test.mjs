@@ -200,7 +200,7 @@ test('every entry point declares the project theme key and the runtime', () => {
 	// black flash and then finds their preference gone.
 	//
 	// Assert the guard READS the keys it is given rather than that it
-	// contains them literally: the guard now takes them from the
+	// contains them literally: the guard takes them from the
 	// data-cm-theme-* attributes on <html>, which is what stops it
 	// drifting from the runtime. A test that pinned the old
 	// `var keys = [...]` shape would fail on the fix, not the bug.
@@ -209,13 +209,30 @@ test('every entry point declares the project theme key and the runtime', () => {
 	// It used to live in Header.astro, which renders inside <body> — so
 	// it ran after the stylesheets had painted, and the flash it exists
 	// to prevent still happened.
+	//
+	// The guard BODY now lives in the library's own file, inlined with
+	// ?raw. So BaseHead is asserted to WIRE it, and the vendored file is
+	// asserted to BE the guard. Checking the component for the body would
+	// be a check naming a superseded symbol: it would pass for any copy
+	// of the guard, including a broken one, and fail the moment the
+	// project stopped hand-rolling it. Which is the whole point of the
+	// change.
 	const head = src('components/BaseHead.astro');
-	assert.ok(head.includes('data-cm-theme-key'),
-		"the FOUC guard must read the project key off <html>");
-	assert.ok(head.includes('data-cm-theme-legacy'),
-		"the FOUC guard must read the legacy-key list off <html>");
-	assert.ok(head.includes('localStorage.getItem'),
+	assert.ok(/cli-mono-theme-guard\.js\?raw/.test(head),
+		'BaseHead must inline the library guard with ?raw; a hand-rolled copy is what caused the flash');
+	assert.ok(head.includes('set:html={themeGuard}'),
+		'BaseHead must actually emit the guard');
+
+	const guard = src('js/cli-mono-theme-guard.js');
+	assert.ok(guard.includes('data-cm-theme-key'),
+		'the FOUC guard must read the project key off <html>');
+	assert.ok(guard.includes('data-cm-theme-legacy'),
+		'the FOUC guard must read the legacy-key list off <html>');
+	assert.ok(guard.includes('localStorage.getItem'),
 		'the FOUC guard must actually read storage');
+	assert.ok(!guard.replace(/\/\*[\s\S]*?\*\//g, '').includes('localStorage.setItem'),
+		'the guard must not write to storage; that is the runtime\'s job, after the paint');
+
 	assert.ok(!src('components/Header.astro').includes('data-theme'),
 		'Header.astro renders inside <body> and must not carry the theme guard');
 });
