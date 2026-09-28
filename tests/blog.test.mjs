@@ -197,15 +197,27 @@ test('every entry point declares the project theme key and the runtime', () => {
 			`${e} must load the library runtime, which owns the toggle`);
 	}
 	// The old key must still be READABLE, or a light-theme reader gets a
-	// black flash and then finds their preference gone. Assert on the
-	// array the guard actually iterates, not on prose: a comment naming
-	// the key is how this test passed a mutant that deleted it.
-	const hdr = src('components/Header.astro');
-	const keys = hdr.match(/var\s+keys\s*=\s*\[([^\]]*)\]/);
-	assert.ok(keys, "the FOUC guard must read an explicit list of theme keys");
-	assert.ok(keys[1].includes("'oem-log-theme'"), "the project key must be in the FOUC guard's key list");
-	assert.ok(keys[1].includes("'cm-theme'"),
-		"the pre-library 'cm-theme' key must still be read, or a returning reader loses their theme");
+	// black flash and then finds their preference gone.
+	//
+	// Assert the guard READS the keys it is given rather than that it
+	// contains them literally: the guard now takes them from the
+	// data-cm-theme-* attributes on <html>, which is what stops it
+	// drifting from the runtime. A test that pinned the old
+	// `var keys = [...]` shape would fail on the fix, not the bug.
+	//
+	// The guard lives in BaseHead.astro, the component that owns <head>.
+	// It used to live in Header.astro, which renders inside <body> — so
+	// it ran after the stylesheets had painted, and the flash it exists
+	// to prevent still happened.
+	const head = src('components/BaseHead.astro');
+	assert.ok(head.includes('data-cm-theme-key'),
+		"the FOUC guard must read the project key off <html>");
+	assert.ok(head.includes('data-cm-theme-legacy'),
+		"the FOUC guard must read the legacy-key list off <html>");
+	assert.ok(head.includes('localStorage.getItem'),
+		'the FOUC guard must actually read storage');
+	assert.ok(!src('components/Header.astro').includes('data-theme'),
+		'Header.astro renders inside <body> and must not carry the theme guard');
 });
 
 test('the theme toggle is not implemented twice', () => {

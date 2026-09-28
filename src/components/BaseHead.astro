@@ -23,6 +23,42 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const { title, description } = Astro.props;
 ---
 
+<!--
+	FOUC guard. This is the FIRST node in <head>, before the charset and
+	before every stylesheet. It used to live in Header.astro, which
+	renders inside <body> — so it ran after the stylesheets had already
+	painted, which is precisely the flash it exists to prevent.
+
+	The key list is read from <html> (this project declares
+	data-cm-theme-key="oem-log-theme" and data-cm-theme-legacy="cm-theme")
+	rather than typed here, so this guard and the library runtime cannot
+	disagree about where the saved theme lives.
+-->
+<script is:inline>
+	(function () {
+		try {
+			var d = document.documentElement;
+			var g = function (a) {
+				try {
+					return d.getAttribute(a);
+				} catch (e) {
+					return null;
+				}
+			};
+			var k = (g('data-cm-theme-key') || 'oem-log-theme')
+				.split(',')
+				.concat((g('data-cm-theme-legacy') || 'cm-theme').split(','));
+			for (var i = 0; i < k.length; i++) {
+				var s = localStorage.getItem(k[i].trim());
+				if (s === 'light' || s === 'dark') {
+					if (s === 'light') d.setAttribute('data-theme', 'light');
+					return;
+				}
+			}
+		} catch (e) {}
+	})();
+</script>
+
 <!-- Global Metadata -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
