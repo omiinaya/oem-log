@@ -125,6 +125,65 @@ test('renamed classes are the library ones, and the old names are gone', () => {
 	}
 });
 
+/* ---------- the second migration: library components, not local copies ---------- */
+
+test('the home and index pages use the library row, not a local copy', () => {
+	// The first migration moved the blog onto the vendored layers but left
+	// the home page and the index page owning a SECOND implementation of
+	// `.cm-head`, `.cm-list-head`, `.cm-status` and the whole row list -
+	// nine parts, ~160 lines of scoped CSS. A local copy is a second owner
+	// for a rule the library owns, so a library fix never reaches the page.
+	//
+	// The row class is the load-bearing one and it is the one a CSS-only
+	// check cannot see: drop `cm-row` off the anchor and every part still
+	// lays out, the page still builds, and the row is just a stack of
+	// spans. That is the exact state the first draft of this migration
+	// shipped into.
+	for (const f of ['pages/index.astro', 'pages/blog/index.astro']) {
+		const body = src(f);
+		assert.ok(/<a class="cm-row" href=/.test(body),
+			`${f}: every row anchor needs class="cm-row" or the library does not style it`);
+		for (const part of ['cm-row__idx', 'cm-row__body', 'cm-row__title',
+			'cm-row__desc', 'cm-row__meta', 'cm-row__sym']) {
+			assert.ok(body.includes(`class="${part}"`),
+				`${f}: .${part} is missing from the row markup`);
+		}
+	}
+	// and the variant is what the library declares
+	assert.ok(/class="cm-rows cm-rows--inline"/.test(src('pages/index.astro')),
+		'the home page opts into the library\'s --inline variant, which is what hides the desc and date on a phone');
+	assert.ok(/class="cm-rows cm-rows--stacked"/.test(src('pages/blog/index.astro')),
+		'the index page opts into the library\'s --stacked variant');
+});
+
+test('the retired local classes do not come back', () => {
+	// These are the project classes the migration deleted. They are not
+	// merely unused: each was a re-implementation of a component the
+	// library owns, so a reappearance means a second owner again. Assert
+	// both directions - no markup uses them, and no scoped block selects
+	// them - because a rule with no markup behind it is dead CSS that
+	// still ships.
+	const retired = ['hero', 'hero-title', 'hero-desc', 'hero-actions', 'btn-primary',
+		'status', 'lbl', 'val', 'list-head', 'sub', 'latest', 'all-notes',
+		'post-list', 'post-grid', 'post-idx', 'post-num', 'post-body', 'post-title',
+		'post-desc', 'post-date', 'post-sym', 'arrow'];
+	for (const f of astroFiles()) {
+		const raw = readFileSync(f, 'utf8');
+		const markup = raw.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<!--[\s\S]*?-->/g, '');
+		for (const m of markup.matchAll(/class="([^"]*)"/g)) {
+			for (const token of m[1].split(/\s+/)) {
+				assert.ok(!retired.includes(token),
+					`${f.replace(root, '')} uses class="${token}", a local copy of a library component`);
+			}
+		}
+		const style = (raw.match(/<style>[\s\S]*?<\/style>/g) || []).map(stripComments).join('\n');
+		for (const c of retired) {
+			assert.ok(!new RegExp(`\\.${c}(?![\\w-])`).test(style),
+				`${f.replace(root, '')}: .${c} is back in a scoped block; the library owns it`);
+		}
+	}
+});
+
 /* ---------- dead CSS: the failure the build cannot see ---------- */
 
 test('no scoped-style selector targets a class its own file does not use', () => {

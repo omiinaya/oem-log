@@ -6,6 +6,53 @@ All notable changes to oem/log. Format loosely follows [Keep a Changelog](https:
 
 ### Changed
 
+- **The home page and the index page no longer re-implement components
+  oem-ui already owns.** The first migration moved the blog onto the
+  vendored layers, but `index.astro` and `blog/index.astro` kept a second
+  copy of five of them in scoped `<style>` blocks — `.hero`/`.hero-title`/
+  `.hero-desc`/`.hero-actions` (that is `.cm-head` + `.cm-lede`),
+  `.btn-primary` (`.cm-btn` + `.cm-btn-group`), `.status`/`.lbl`/`.val`
+  (`.cm-status`), `.list-head` (`.cm-list-head`) and the nine-part
+  `.post-list`/`.post-grid` row family (`.cm-rows`). About **160 lines
+  of second-implementation CSS** across the two files.
+
+  A local copy is a second owner for a rule the library owns, so a
+  library fix never reaches the page and the two drift — which is the
+  whole reason the layers are vendored at all. `index.astro` now has
+  **no scoped block whatsoever**: the one behaviour it genuinely needed
+  (drop the description and the date on a phone) is what the library's
+  `.cm-rows--inline` variant already declares, so the page opts into a
+  variant instead of re-declaring a rule. The only local declaration
+  left anywhere is a `font-size` floor on the index page's `<time>`, and
+  that exists because `FormattedDate` renders a bare `<time>`.
+
+  Migrated to: `.cm-head`, `.cm-kicker`, `.cm-lede`, `.cm-btn-group`,
+  `.cm-btn`, `.cm-status`+`.cm-status--ok`, `.cm-list-head`, `.cm-rows`
+  (with `.cm-rows--inline` on the home page and `.cm-rows--stacked` on
+  the index page), `.cm-row__idx/__body/__title/__desc/__meta/__sym`,
+  `.cm-list-more`.
+
+  One detail that the CSS cannot catch, and that the first draft of this
+  migration got wrong on **both** pages: `cm-row` goes on the `<a>`. Drop
+  it and the page still builds, every `cm-row__*` part is still in the
+  markup, and every source-level test still passes — the row is just a
+  stack of unstyled spans. `tests/verify-migration-webkit.py` asserts the
+  row's computed `display` is `flex` for exactly that reason.
+
+  Verified in WebKit at 390x844 (touch) and 1280x900 against the LAN
+  build: every row part present and non-collapsed, the status strip's
+  hanging indent and its `--ok` glyph both resolving
+  (`text-indent:-15.088px` / `padding-left:15.088px`, `::before "●"`),
+  the hero button at **179x44** from `--tap`, the description and date
+  hidden on the phone by the library variant, the index page's rows
+  genuinely stacked (title/desc/meta `top`s strictly increasing), and
+  `scrollX == 0` at both widths on both pages.
+
+  Two new contract tests (`blog.test.mjs` 10 → 12) assert the row class,
+  every part, and that all 22 retired project classes stay gone from
+  both the markup and every scoped block. Both directions, because a
+  retired class reappearing in a selector is dead CSS that still ships.
+
 - **Emphasis is no longer declared twice on this site.** `index.astro`
   and `about.astro` each carried their own `strong` rule in a scoped
   block, because oem-ui had no rule for a bare `<strong>` and the browser

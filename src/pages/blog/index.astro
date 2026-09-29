@@ -29,24 +29,35 @@ const posts = (await getCollection('blog')).sort(
 	<body>
 		<Header />
 		<main>
-			<section class="list-head">
+			<!--
+				Library components, as on the home page. This page used to own
+				a second copy of `.cm-head` (as `.list-head`) and a second
+				copy of the row list (as `.post-grid` and its seven parts) in
+				a scoped block. The stacked variant is the library's, not
+				this page's: `.cm-rows--stacked` already declares the
+				column body, the larger title and the spacing between
+				title / description / date that this page had re-derived.
+			-->
+			<section class="cm-head">
 				<p class="cm-kicker">all notes</p>
 				<h1>Index</h1>
-				<p class="sub">{posts.length} note{posts.length === 1 ? '' : 's'} · newest first</p>
+				<p class="cm-head__sub">{posts.length} note{posts.length === 1 ? '' : 's'} · newest first</p>
 			</section>
 
-			<ul class="post-grid">
+			<ul class="cm-rows cm-rows--stacked">
 				{
 					posts.map((post, i) => (
 						<li>
-							<a href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
-								<span class="post-num">{String(posts.length - i).padStart(2, '0')}</span>
-								<div class="post-body">
-									<h2>{post.data.title}</h2>
-									<p class="post-desc">{post.data.description}</p>
-									<p class="post-date"><FormattedDate date={post.data.pubDate} /></p>
-								</div>
-								<span class="arrow" aria-hidden="true">▸</span>
+							<a class="cm-row" href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
+								<span class="cm-row__idx">{String(posts.length - i).padStart(2, '0')}</span>
+								<span class="cm-row__body">
+									<span class="cm-row__title">{post.data.title}</span>
+									<span class="cm-row__desc">{post.data.description}</span>
+									<span class="cm-row__meta">
+										<FormattedDate date={post.data.pubDate} />
+									</span>
+								</span>
+								<span class="cm-row__sym" aria-hidden="true">▸</span>
 							</a>
 						</li>
 					))
@@ -58,44 +69,19 @@ const posts = (await getCollection('blog')).sort(
 </html>
 
 <style>
-	.list-head { padding: var(--head-top) 0 2rem; }
-	.list-head .cm-kicker { margin-bottom: 0.8rem; }
-	.list-head h1 { font-size: var(--head-h1); margin-bottom: 0.6rem; letter-spacing: -0.01em; }
-	.list-head .sub {
-		color: var(--ink-faint);
-		font-family: var(--font-mono);
-		font-size: 0.8rem;
-		margin: 0;
-	}
+	/* The date is the third line in this row, not a trailing column, so it
+	   has to sit below the description rather than beside it. The stacked
+	   variant orders title / desc / meta vertically and adds the top margin
+	   on each; the library's `.cm-row__meta` is a bare column by default and
+	   would sit on the title's baseline. This is the one genuinely local
+	   declaration the migration left, and it is a PLACEMENT fix, not a
+	   re-implementation: colour, size and the row's own box all still come
+	   from the library.
 
-	.post-grid { list-style: none; margin: 0; padding: 0; }
-	.post-grid li { margin: 0; }
-	.post-grid a {
-		display: flex;
-		align-items: center;
-		gap: 1.1rem;
-		padding: 1rem 0.6rem;
-		border-bottom: 1px solid var(--line);
-		text-decoration: none;
-		transition: background 0.1s ease;
-	}
-	.post-grid a:hover { background: var(--panel); }
-	.post-num { font-family: var(--font-mono); font-size: max(var(--min-font), 0.78rem); color: var(--ink-faint); min-width: 2.8rem; }
-	.post-body { flex: 1; min-width: 0; }
-	.post-body h2 { margin: 0 0 0.3rem; font-size: 1.15rem; color: var(--ink); }
-	.post-grid a:hover h2 { color: var(--ink); }
-	.post-desc { margin: 0 0 0.3rem; color: var(--ink-faint); font-size: 0.85rem; line-height: 1.5; }
-	/* FormattedDate renders a bare <time> element, so the font-size on this
-	   <p> is only an inherited default: the child resolved to 11.52px on a
-	   phone. Target the element that actually carries the text. */
-	.post-date { margin: 0; font-family: var(--font-mono); color: var(--ink-faint); }
-	.post-date :global(time) { font-size: max(var(--min-font), 0.72rem); }
-	.arrow { color: var(--ink-faint); font-size: 1rem; transition: color 0.12s ease, transform 0.12s ease; }
-	.post-grid a:hover .arrow { color: var(--ink); transform: translateX(3px); }
-
-	@media (max-width: 560px) {
-		.post-num { display: none; }
-		.list-head h1 { font-size: 1.7rem; }
-		.post-grid a { gap: 0.7rem; padding: 0.9rem 0.4rem; }
+	   FormattedDate renders a bare <time> element, so a font-size on this
+	   element is only an inherited default - the child resolved to 11.52px
+	   on a phone before. Target the element that carries the text. */
+	.cm-rows--stacked .cm-row__meta :global(time) {
+		font-size: max(var(--min-font), 0.72rem);
 	}
 </style>

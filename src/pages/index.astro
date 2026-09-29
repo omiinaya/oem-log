@@ -30,48 +30,64 @@ const latest = posts.slice(0, 4);
 	<body>
 		<Header />
 		<main>
-			<section class="hero">
+			<!--
+				Every block below is a library component. This page used to
+				maintain a second implementation of all of them - `.hero`,
+				`.hero-title`, `.hero-desc`, `.btn-primary`, `.status`/`.lbl`/
+				`.val`, `.list-head`, `.post-list` and its nine parts - in a
+				scoped block, in a file the library has owned since the
+				migration. A local copy is a second owner for a rule the
+				design system owns, so a library fix never reaches this page
+				and the two drift. That is the whole reason the layers exist.
+				The one genuinely local thing left is the phone breakpoint
+				that hides the description and the date, and it now comes
+				from the library: `.cm-rows--inline` opts into exactly the
+				rule this page used to re-declare locally, so the file has
+				no scoped block at all. That is the point of the migration —
+				the page no longer owns a second copy of anything.
+			-->
+			<section class="cm-head">
 				<p class="cm-kicker">things we learned · worth sharing</p>
-				<h1 class="hero-title">{SITE_TITLE}</h1>
-				<p class="hero-desc">
+				<h1>{SITE_TITLE}</h1>
+				<p class="cm-lede">
 					Short writeups of things we've learned while shipping real systems:
 					the reusable trick, the gotcha that cost us time, and how to use it
 					in a bigger build. No full blueprints, no sensitive details, just the
 					useful middle of the story.
 				</p>
-				<div class="hero-actions">
-					<a class="btn-primary" href={`${import.meta.env.BASE_URL}blog/`}>&gt;_ read the notes</a>
+				<div class="cm-btn-group">
+					<a class="cm-btn" href={`${import.meta.env.BASE_URL}blog/`}>&gt;_ read the notes</a>
 				</div>
 			</section>
 
-			<section class="status">
-				<span class="lbl">status</span>
-				<span class="val">● static · fast · zero runtime attack surface</span>
-			</section>
+			<div class="cm-status cm-status--ok">
+				<span class="cm-status__label">status</span>
+				<span class="cm-status__value">static · fast · zero runtime attack surface</span>
+			</div>
 
 			{latest.length > 0 && (
-				<section class="latest">
-					<div class="list-head">Index / latest</div>
-					<ul class="post-list">
+				<section>
+					<div class="cm-list-head">Index / latest</div>
+					<ul class="cm-rows cm-rows--inline">
 						{
 							latest.map((post, i) => (
 								<li>
-									<a href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
-										<span class="post-idx">{String(posts.length - i).padStart(2, '0')}</span>
-										<span class="post-body">
-											<span class="post-title">{post.data.title}</span>
-											<span class="post-desc">{post.data.description}</span>
+									<a class="cm-row" href={`${import.meta.env.BASE_URL}blog/${post.id}/`}>
+										<span class="cm-row__idx">{String(posts.length - i).padStart(2, '0')}</span>
+										<span class="cm-row__body">
+											<span class="cm-row__title">{post.data.title}</span>
+											<span class="cm-row__desc">{post.data.description}</span>
 										</span>
-										<span class="post-date">
+										<span class="cm-row__meta">
 											<FormattedDate date={post.data.pubDate} />
 										</span>
-										<span class="post-sym" aria-hidden="true">▸</span>
+										<span class="cm-row__sym" aria-hidden="true">▸</span>
 									</a>
 								</li>
 							))
 						}
 					</ul>
-					<div class="all-notes">
+					<div class="cm-list-more">
 						<a href={`${import.meta.env.BASE_URL}blog/`}>$ cat all →</a>
 					</div>
 				</section>
@@ -80,107 +96,3 @@ const latest = posts.slice(0, 4);
 		<Footer />
 	</body>
 </html>
-
-<style>
-	.hero { padding: var(--head-top) 0 2.5rem; }
-	.hero .cm-kicker { margin-bottom: 1rem; }
-	.hero-title {
-		font-size: var(--head-h1);
-		letter-spacing: -0.01em;
-		line-height: 1.1;
-		margin-bottom: 1.3rem;
-	}
-	.hero-desc {
-		color: var(--ink-dim);
-		font-size: 0.95rem;
-		line-height: 1.7;
-		margin-bottom: 1.8rem;
-	}
-	/* Emphasis needs no rule here: oem-ui declares it as an element
-	   default in the base layer, so a bare <strong> in this paragraph is
-	   already --ink at weight 700. Re-declaring it in a scoped block would
-	   be a second owner for a rule the library owns, and a cascade race
-	   if the two ever disagreed. */
-	.hero-actions { display: flex; gap: 0.8rem; flex-wrap: wrap; }
-	.btn-primary {
-		display: inline-flex;
-		align-items: center;
-		padding: 0.6em 1.3em;
-		border-radius: 0;
-		font-family: var(--font-mono);
-		font-size: 0.84rem;
-		color: var(--ink);
-		border: 1px solid var(--ink-faint);
-		background: transparent;
-		text-decoration: none;
-		letter-spacing: 0.02em;
-		transition: all 0.12s ease;
-	}
-	.btn-primary:hover {
-		background: var(--bg-2);
-		border-color: var(--ink);
-		color: var(--ink);
-	}
-
-	.status {
-		padding: 0.8rem 1.1rem;
-		background: var(--panel);
-		border: 1px solid var(--line);
-		margin-bottom: 1.8rem;
-		font-family: var(--font-mono);
-		font-size: max(var(--min-font), 0.72rem);
-		color: var(--ink-dim);
-	}
-	.status .lbl {
-		color: var(--ink-faint);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		font-size: max(var(--min-font), 0.66rem);
-		margin-right: 0.7rem;
-	}
-	.status .val { color: var(--ink); font-size: max(var(--min-font), 0.72rem); }
-
-	.latest { margin-top: 2.4rem; }
-	.list-head {
-		font-size: max(var(--min-font), 0.7rem);
-		color: var(--ink-faint);
-		text-transform: uppercase;
-		letter-spacing: 0.18em;
-		border-bottom: 1px solid var(--line);
-		padding-bottom: 0.6rem;
-		margin-bottom: 0.2rem;
-	}
-	.post-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.post-list li { margin: 0; }
-	.post-list a {
-		display: flex;
-		align-items: center;
-		gap: 1.1rem;
-		padding: 0.85rem 0.5rem;
-		border-bottom: 1px solid var(--line);
-		text-decoration: none;
-		transition: background 0.1s ease;
-	}
-	.post-list a:hover { background: var(--panel); }
-	.post-idx { color: var(--ink-faint); font-size: 0.75rem; min-width: 2.6rem; }
-	.post-body { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 0.5rem; overflow: hidden; }
-	.post-title { font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.post-list a:hover .post-title { color: var(--ink); }
-	.post-desc { color: var(--ink-faint); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.post-date { color: var(--ink-faint); font-size: 0.75rem; white-space: nowrap; }
-	.post-sym { color: var(--ink-faint); transition: color 0.12s ease; }
-	.post-list a:hover .post-sym { color: var(--ink); }
-	.all-notes { margin-top: 1.4rem; text-align: right; }
-	.all-notes a { font-family: var(--font-mono); font-size: 0.84rem; color: var(--ink-dim); text-decoration: none; }
-	.all-notes a:hover { color: var(--ink); }
-
-	@media (max-width: 680px) {
-		.hero { padding: var(--head-top) 0 2rem; }
-		.post-desc { display: none; }
-		.post-date { display: none; }
-	}
-</style>
