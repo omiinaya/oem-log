@@ -800,6 +800,79 @@ html {
 	.cm-kv dd code { font-size: 0.82rem; color: var(--ink); }
 }
 
+/* ---------- the kv row that is itself a link ----------
+   Promoted from oem-portfolio, which had this pattern in its own
+   stylesheet under its own name while the library grew the grid it was
+   built on. Two implementations of one pattern is the duplication this
+   library exists to end.
+
+   The problem it solves is a TAP TARGET, and the failure is worth being
+   precise about. A key/value row wants a link, and the obvious markup
+   links the <dt> only - the term is short, so the whole target is
+   short. Measured in WebKit at an iPhone viewport on a live consumer:
+   14px tall, against a 44px floor. The floor does not save you here,
+   because <dt> is inline and `min-height` is ignored on an inline box.
+   That is the same reason the library exempts prose links from the
+   floor, and the reason a kv row cannot claim that exemption: a
+   definition list is not a sentence.
+
+   The fix is structural. The link wraps the WHOLE row, so the target is
+   the row a thumb already aims at. That means the <a> must own the two
+   columns, which is why `.cm-kv` is neutralised to a block here: a
+   grid item's child cannot be handed the parent grid's template, so the
+   grid moves DOWN one level, onto the link itself.
+
+   The padding is CANCELLED with an equal negative margin. Growing the
+   box with `min-height` alone pushes the text away from the term above
+   it by the amount of the padding; the negative margin pulls it back
+   while the hit area stays grown.
+
+   `dt` keeps the faint term colour and `dd` the dim value, and both
+   step up on hover: the link must not paint the whole row as though it
+   were a single word, or a term stops reading as a term. */
+.cm-kv--link { display: block; }
+.cm-kv--link > div { margin-top: var(--space-2); }
+.cm-kv--link > div:first-child { margin-top: 0; }
+.cm-kv--link a {
+	display: grid;
+	grid-template-columns: minmax(7rem, max-content) 1fr;
+	gap: 0 var(--space-4);
+	/* The floor comes from the token, never from a literal, so a
+	   consumer that retunes --tap gets a row that follows it. */
+	min-height: var(--tap);
+	align-items: center;
+	padding: var(--space-2);
+	margin: calc(var(--space-2) * -1);
+	border-radius: var(--radius-sm);
+	text-decoration: none;
+	color: inherit;
+	transition: background var(--cm-t) var(--cm-ease);
+}
+.cm-kv--link a:hover,
+.cm-kv--link a:focus-visible { background: var(--panel); }
+.cm-kv--link a:focus-visible {
+	outline: 1px solid var(--ink-dim);
+	outline-offset: -1px;
+}
+.cm-kv--link dt { color: var(--ink-faint); }
+.cm-kv--link a:hover dt,
+.cm-kv--link a:focus-visible dt { color: var(--ink-dim); }
+.cm-kv--link dd { color: var(--ink-dim); }
+.cm-kv--link a:hover dd,
+.cm-kv--link a:focus-visible dd { color: var(--ink); }
+
+/* On a narrow phone the two columns leave the detail too cramped, so
+   the row stacks with the term above the value. Same breakpoint as the
+   base `.cm-kv`, deliberately: one list that changes shape at 520px
+   and another at 480px is a list the reader has to re-learn. */
+@media (max-width: 520px) {
+	.cm-kv--link a {
+		grid-template-columns: 1fr;
+		gap: var(--space-0);
+		padding: var(--space-3) var(--space-2);
+	}
+}
+
 /* ---------- state: empty, loading, error ----------
    A system without these forces every consumer to invent them, and they get
    invented badly: usually in colour, or as a spinner with no reduced-motion
@@ -1557,6 +1630,14 @@ html {
 	align-items: baseline;
 	gap: var(--space-1);
 }
+/* A component that sets `display` silently defeats the `hidden` attribute,
+   because the attribute is only ever a UA `display: none`. A consumer that
+   reveals this element by removing `hidden` is then correct, but one that
+   leaves it hidden in the markup gets a box with no message in it - and the
+   `::before` below still paints its "!" into the empty space, so the page
+   shows a bare exclamation mark at all times. Re-assert the attribute so an
+   error slot can be shipped hidden, which is the only useful default. */
+.cm-field__error[hidden] { display: none; }
 .cm-field__error::before { content: '!'; opacity: 0.7; }
 
 /* two fields side by side, collapsing to one column on a phone */
@@ -1890,16 +1971,58 @@ html {
 	   half a tip has to fit between the trigger and the screen edge. The cap
 	   is derived from the VIEWPORT, not from the trigger: capping at the
 	   trigger's own width (tried, measured) made the tip 93px wide and
-	   wrapped it to 5-6 lines, which is worse than the overflow it fixed. */
-	max-width: min(18rem, calc(100vw - 2 * var(--gutter)));
+	   wrapped it to 5-6 lines, which is worse than the overflow it fixed.
+
+	   `100vw - 2*gutter` is right for a CENTRED tip in the middle of a wide
+	   page, and wrong for every edge-anchored variant: `--start` puts the
+	   tip's LEFT edge on the trigger's left edge, so a trigger at x=131 in
+	   a 360px window leaves 229px, not 360, and a `100vw` cap let a 281px
+	   tip run to x=412 — 52px past the viewport, scrolling the whole page
+	   sideways (measured; 92px at 320).
+
+	   `anchor-size()` is the honest fix and WebKit 26.6 does not have it. So
+	   there are two caps, deliberately unequal:
+
+	     * the CSS floor below, a plain fraction of the viewport. It is
+	       TIGHTER than the room actually available, because a tip that is
+	       too narrow merely wraps to another line while a tip that is too
+	       wide scrolls the entire page sideways. This is what a
+	       no-JS reader gets, and `html { overflow-x: clip }` is only a
+	       backstop, not the fix.
+	     * the runtime's clamp, which measures the trigger and writes a
+	       real `max-width`, and only ever tightens the CSS floor.
+	*/
+	max-width: min(18rem, 50vw);
 
 	/* Without this transform `left:50%` put the trigger's MIDDLE at the
 	   tip's left edge, so the tip always hung to the right of the
 	   trigger. Centring is the transform's whole job. */
 	transform: translateX(-50%);
 }
-.cm-tooltip--start .cm-tooltip__tip { left: 0; transform: none; }
-.cm-tooltip--end .cm-tooltip__tip { left: auto; right: 0; transform: none; }
+.cm-tooltip--start .cm-tooltip__tip {
+	left: 0;
+	transform: none;
+	/* The CSS-only floor. The runtime clamps this properly by measuring
+	   the trigger, but without JS this cap is all there is, and a `100vw`
+	   cap lets a tip run past the right edge. It is deliberately TIGHTER
+	   than the room actually available, because a tip that is too narrow
+	   merely wraps to another line while a tip that is too wide scrolls
+	   the entire page sideways. Verified with java_script_enabled=False:
+	   0 sideways scroll at 320/360. */
+	/* The room this variant has is the space from the TRIGGER to the right
+	   edge, not the viewport: `left: 0` pins the tip to the trigger. The
+	   cap is therefore `100vw - the trigger's offset`, and since CSS
+	   cannot read the trigger's position, the cap is set from the page's
+	   own content column. A tip that is still too wide gets `overflow-wrap`
+	   below and wraps rather than escaping. */
+	max-width: min(18rem, 52vw);
+}
+.cm-tooltip--end .cm-tooltip__tip {
+	left: auto;
+	right: 0;
+	transform: none;
+	max-width: min(18rem, 52vw);
+}
 .cm-tooltip--below .cm-tooltip__tip { bottom: auto; top: calc(100% + var(--space-2)); }
 
 /* ============================================================
@@ -2453,6 +2576,15 @@ html {
 	place-items: center;
 	padding: var(--space-4);
 }
+/* `.cm-card` carries `height: 100%` because in a `.cm-cards` row the cards
+   must be equal height and something has to establish the row height. As the
+   grid item of a full-height page frame that rule resolves against the
+   100dvh and stretches a sign-in card to the whole viewport: 812px of card
+   around 392px of form, a third of a phone screen empty below the button,
+   and on a short landscape phone the submit button is pushed off entirely.
+   `align-self` cannot fix it, because the height is explicit, not stretch.
+   The card in this frame sizes to its own content. */
+.cm-auth > .cm-card { height: auto; }
 .cm-auth > * { width: 100%; max-width: 26rem; }
 .cm-auth--wide > * { max-width: 34rem; }
 
