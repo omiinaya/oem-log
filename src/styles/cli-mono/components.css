@@ -509,13 +509,10 @@ html {
 .cm-row__title {
 	font-weight: 700;
 	color: var(--ink);
-	/* The title is the primary label: it NEVER ellipsizes. It keeps its
-	   full width and pushes the description instead, so the reader never
-	   loses the thing they're scanning for. The max-width is a safety
-	   valve for pathologically long titles, which are the only case
-	   allowed to truncate. */
-	flex: 0 0 auto;
-	max-width: 70%;
+	/* The title is the primary label: it ellipsizes when it would crowd the description,
+	   but it gets most of the space first. */
+	flex: 1 1 auto;
+	max-width: 65%;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
