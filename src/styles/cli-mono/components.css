@@ -525,9 +525,16 @@ html {
 	color: var(--ink-faint);
 	font-size: 0.8rem;
 	/* The description is the one that truncates. min-width:0 is what lets
-	   a flex child ellipsize instead of forcing the row wider. */
+	   a flex child ellipsize instead of forcing the row wider.
+
+	   The ch cap is what makes the excerpt column READ as a column. Left to
+	   share the leftover space, every row got a different width, so the text
+	   started at a different offset on every line and the index looked ragged
+	   even though each row was individually correct. A fixed measure also
+	   keeps the right edge honest for the date that follows it. */
 	flex: 0 1 auto;
 	min-width: 0;
+	max-width: 34ch;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
