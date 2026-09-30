@@ -53,7 +53,8 @@
 .cm-head { padding: var(--head-top) 0 2rem; }
 .cm-head .cm-kicker { margin-bottom: var(--space-3); }
 .cm-head h1,
-.cm-head .cm-head__title {
+.cm-head .cm-head__title,
+.cm-head-row .cm-head__title {
 	font-size: var(--head-h1);
 	line-height: 1.15;
 	margin: 0 0 0.6rem;
@@ -64,6 +65,34 @@
 	font-family: var(--font-mono);
 	font-size: 0.8rem;
 	margin: 0;
+}
+/* In a row the title's bottom margin would open a gap between the title
+   and its own sub, so the row variant carries none of it. */
+.cm-head-row .cm-head__title,
+.cm-head-row .cm-head__sub { margin: 0; }
+
+/* The page title ROW: badge, name+sub, and the page's own action, on one
+   line. .cm-head above is the document-head variant - a vertical stack with
+   --head-top above it - and using it for this put the action button under
+   the title instead of beside it, with the block's top padding duplicated
+   inside an already-padded card.
+
+   The action is pushed to the far end with margin-left:auto rather than
+   justify-content, so a long title can shrink and wrap without the action
+   drifting away from the edge. */
+.cm-head-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+.cm-head-row__text { min-width: 0; }
+.cm-head-row__action { margin-left: auto; flex: 0 0 auto; }
+/* At 320px a badge + a long title + a full-word button cannot share one
+   line honestly. The action drops below rather than squeezing the title to
+   three words per line. */
+@media (max-width: 420px) {
+	.cm-head-row { flex-wrap: wrap; }
+	.cm-head-row__action { margin-left: 0; width: 100%; }
 }
 
 /* ---------- post / article head ----------
@@ -194,6 +223,7 @@
 	   failure rather than a nit. */
 	.cm-cursor,
 	.cm-spec__chip--motion,
+	.cm-glyph-spin,
 	.cm-skeleton__line,
 	.cm-skeleton__block,
 	.cm-spinner,
@@ -515,6 +545,47 @@ html {
 	align-items: baseline;
 	gap: var(--space-2);
 }
+.cm-row--on {
+	/* The same selected treatment as `cm-section--on`, for a selected row
+	   inside a list. Glyph and weight, never hue: a tinted row is the one
+	   signal that vanishes in greyscale print, and a selected row is
+	   information the reader has to be able to see. */
+	background: var(--bg-2);
+	box-shadow: inset 3px 0 0 var(--ink);
+}
+
+/* A row that is itself the control. Templates lists are navigated by
+   clicking the row, and `cm-row` is an <a> in every other surface, so the
+   button version needs the row's geometry with the button's own resets
+   applied - otherwise every consumer hand-writes background/border/padding
+   in a style prop, which is the thing a stylesheet exists to prevent. */
+button.cm-row {
+	width: 100%;
+	text-align: left;
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var(--line);
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+}
+/* The button reset is (0,0,1) so this wins nothing by accident, but it
+   does declare `background: transparent` at (0,1,1) - which OUTRANKS
+   `.cm-row--on` at (0,1,0). The selected row therefore computed to a
+   transparent background in WebKit and the "on" state was invisible on
+   every button row. Measured before the fix: `.cm-row cm-row--on`
+   computed `rgba(0, 0, 0, 0)` while `.cm-row--on` declares
+   `background: var(--bg-2)`.
+
+   The state modifier must be able to win over the element default, so it
+   is restated at the same specificity rather than trusting source order.
+   An `<a class="cm-row cm-row--on">` is unaffected either way. */
+button.cm-row--on,
+button.cm-row--on:hover {
+	background: var(--bg-2);
+}
+button.cm-row:hover { background: var(--bg-2); }
+
 .cm-row__title {
 	font-weight: 700;
 	color: var(--ink);
@@ -585,6 +656,45 @@ html {
 	font-size: 0.75rem;
 	white-space: nowrap;
 	flex: 0 0 auto;
+}
+
+/* A meta slot is a fixed, unshrinkable strip by default - correct for a
+   status or a timestamp, and it is why the body carries
+   `overflow: hidden`. But a meta slot that holds a CONTROL (a scheme
+   <select>, an inline edit) cannot be unshrinkable: the body clipped it
+   and the control was unreachable on a phone.
+
+   Measured in WebKit at 390px, before this: the `select` and
+   `.cm-inline` extended to x=450 and x=587 against a 390px viewport, and
+   `.cm-row__body { overflow: hidden }` hid the rest of them. On a
+   modifier, the slot becomes a wrapping flex row and stops being
+   unshrinkable, so the body keeps its clip and the content fits. */
+.cm-row__meta--wrap {
+	white-space: normal;
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+.cm-row__meta--wrap > * { min-width: 0; }
+
+/* A row body is a nowrap flex line by default - title, desc and meta on
+   one line, which is right when the row is a summary. It has to give way
+   when the row carries a control: at 390px the unshrinkable meta slot
+   and the button group behind it left the scheme <select> covered and
+   the inline edit measured 0px wide.
+
+   On the modifier the body wraps, so the second line starts below the
+   first instead of underneath it, and the meta slot goes to a full line
+   of its own rather than fighting the title for the same row. */
+.cm-row__body--wrap {
+	flex-wrap: wrap;
+	row-gap: var(--space-2);
+}
+.cm-row__body--wrap > .cm-row__meta--wrap {
+	flex: 1 0 100%;
 }
 .cm-row__sym {
 	color: var(--ink-faint);
@@ -694,6 +804,31 @@ html {
 		gap: var(--space-7);
 	}
 }
+
+/* Two EQUAL columns of ranked data. `cm-split` is deliberately
+   asymmetric (1.6fr / 1fr) because it models main-plus-aside, and it
+   would be wrong here: "top paths" and "referrers" are two answers to
+   the same question about the same host, and a reader comparing them
+   needs both at the same width. An asymmetry in a comparison invites
+   them to read the wider column as more important, which it is not.
+   Stacked below 760px, because two ranked lists side by side at 390px
+   leaves each bar about 120px - too short to compare lengths in. */
+.cm-cols {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: var(--space-6);
+	min-width: 0;
+}
+@media (min-width: 760px) {
+	.cm-cols--2 { grid-template-columns: 1fr 1fr; }
+}
+/* A titled group inside a column or a dialog: a heading plus whatever
+   it labels, with the spacing between the two owned here so no consumer
+   re-derives it. `cm-head__sub` is the heading because a sub-heading is
+   a role, not a colour - the dimming is what marks it as subordinate to
+   the title above it. */
+.cm-block { min-width: 0; }
+.cm-block > .cm-head__sub { margin: 0 0 var(--space-3); }
 
 /* ---------- back link ----------
    "← back" above a detail page. A tap target in its own right, so it
@@ -987,6 +1122,22 @@ html {
 	margin-top: var(--space-5);
 	display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap;
 }
+/* The action inside an empty state is the ONLY way out of it, so on a touch
+   viewport it is a primary action and takes the tap floor even when the
+   author wrote `.cm-btn--sm`.
+
+   `.cm-btn--sm` opts out of --tap on purpose - it is for a dense row like a
+   toolbar, where 27px next to its neighbours is the point. An empty state is
+   the opposite of a dense row: it is usually the only control on screen, and
+   it is the one a thumb has to find. Measured on a 390px coarse pointer: a
+   lone `.cm-btn--sm` in a `.cm-state` was a 27px target against --tap: 44px,
+   with no other control anywhere in the specimen to carry the action.
+
+   Scoped to `.cm-state__actions` rather than to `.cm-btn--sm`, so the dense
+   rows that earn the small size keep it. */
+@media (pointer: coarse) {
+	.cm-state__actions .cm-btn { min-height: var(--tap); }
+}
 
 /* A skeleton is a placeholder, never a spinner. It is aria-hidden because
    "loading" is announced once by the region, not once per bar. */
@@ -1020,6 +1171,25 @@ html {
 }
 .cm-spinner--lg { width: 1.6rem; height: 1.6rem; }
 @keyframes cm-spin { to { transform: rotate(360deg); } }
+
+/* The same animation, for a GLYPH that is already the right shape - a
+   refresh arrow, a sync mark. `.cm-spinner` draws its own ring with a
+   border, which is the right answer for a surface that has nothing to
+   show yet, but the wrong one inside a button that already says "refresh
+   while loading" and already owns an icon.
+
+   rpm reached for Tailwind's `animate-spin` here, and that class is not
+   in the built stylesheet at all: the "loading" indicator stopped
+   animating the day the bundle lost its utilities, and nothing failed.
+   Same trap as `.animate-pulse` in the skeleton tests - a class name that
+   looks like it does something and defines nothing.
+
+   Reduced motion is silenced by the library's ONE reduced-motion block,
+   alongside .cm-spinner - not by a guard of its own. That block is
+   deliberately singular and a check asserts it stays that way: slicing to
+   the end of the file would let any later mention of a selector satisfy
+   the guard, which is how a real accessibility gap stays green. */
+.cm-glyph-spin { animation: cm-spin 0.9s linear infinite; }
 .cm-spinner-row {
 	display: flex; align-items: center; gap: var(--space-2);
 	color: var(--ink-dim); font-size: var(--min-font);
@@ -1055,9 +1225,27 @@ html {
 /* ---------- table ----------
    Data, not prose. The scroll wrapper is part of the component because a
    wide table that overflows the page is the single most common way a
-   monospace layout breaks on a phone. */
+   monospace layout breaks on a phone.
+
+   MEASURED in WebKit, and the opposite of what it looks like: `overflow-x:
+   auto` on this wrapper computes `overflow-y` to `auto` as well (CSS
+   overflow rule - only `visible` is forced to the other axis), so the
+   wrapper is a scrollport on BOTH axes. `th` is then sticky to the
+   WRAPPER rather than to the viewport, and the wrapper only ever
+   scrolls sideways - so the header rode down the page with it, drifting
+   by exactly the scroll distance (27px of scroll, 27px of drift, at
+   393x852). A test asserting `position: sticky` on the `th` PASSES
+   while the page is visibly broken; that is the whole reason this note
+   exists.
+
+   Viewport-sticky inside a horizontally scrolling ancestor is a CSS
+   constraint, not a WebKit quirk, so the header must stick to the
+   scrollport that actually scrolls. `max-height` makes the wrapper a
+   real vertical scrollport and the header then holds (measured drift
+   0px). Without it this is a table whose header is never visible. */
 .cm-table-wrap {
 	overflow-x: auto;
+	max-height: var(--table-max-h, 30rem);
 	border: 1px solid var(--line);
 	border-radius: var(--radius-sm);
 	-webkit-overflow-scrolling: touch;
@@ -1087,6 +1275,86 @@ html {
 	color: var(--ink);
 }
 .cm-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* A numeric column aligns on the digit, which is the only way a column of
+   durations or sizes can be compared without reading each one. The
+   `__num` form matches the BEM of the rest of the block; `.num` above is
+   kept for the older markup.
+
+   These selectors carry the element, and that is load-bearing, not
+   decoration: `.cm-table td` is specificity 0,1,1 and a bare
+   `.cm-table__num` is 0,1,0, so the cell rule WINS and every duration
+   rendered left-aligned with a ragged right edge - measured, and it read
+   correctly in the source the whole time. */
+.cm-table td.cm-table__num,
+.cm-table th.cm-table__num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+/* A long host or path must not set the column width for the whole
+   column - 40 hosts of wildly different lengths otherwise makes every
+   row as wide as the worst one. Truncate with an ellipsis so the value
+   is still identifiable on hover. */
+.cm-table__truncate {
+	max-width: 20rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* The control inside a table cell.
+
+   A `<tr onClick>` is not a control: it is not focusable, Enter and Space
+   do nothing, and to a screen reader it is text. So the row's action has
+   to be a real element in a real cell - and then the only question is
+   what it looks like, because by default a button in a cell draws a
+   2px raised box in the middle of a flat grid, which makes the whole
+   table look like a stack of buttons.
+
+   So it is drawn as text with the affordance added on hover and focus:
+   an underline that appears, and an arrow that slides. The target is
+   still the button's own padding box, not the text, so the tap floor
+   holds; it just does not LOOK like a chrome button. The arrow is
+   hidden from assistive tech because the button's own name already
+   says where it goes. */
+.cm-table__action {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: var(--tap);
+	padding: 0 var(--space-1);
+	margin-left: calc(-1 * var(--space-1));
+	background: none;
+	border: 0;
+	border-radius: var(--radius-sm);
+	color: var(--ink);
+	font: inherit;
+	font-family: var(--font-mono);
+	text-align: left;
+	cursor: pointer;
+}
+.cm-table__action:hover { text-decoration: underline; }
+.cm-table__action:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+.cm-table__action svg {
+	color: var(--ink-faint);
+	flex: 0 0 auto;
+	/* The arrow is a hint, not the content: it slides in on hover rather
+	   than shifting the text, so a row of buttons does not jitter. */
+	opacity: 0;
+	transition: opacity var(--cm-t) var(--cm-ease), transform var(--cm-t) var(--cm-ease);
+	transform: translateX(0);
+}
+.cm-table__action:hover svg,
+.cm-table__action:focus-visible svg {
+	opacity: 1;
+	transform: translateX(2px);
+}
+/* A touch device has no hover, so the hint never appears and the row
+   would look like plain text with no indication it is a control. On a
+   coarse pointer the arrow is simply always there. */
+@media (pointer: coarse), (max-width: 680px) {
+	.cm-table__action svg { opacity: 1; }
+}
 /* On a phone a nowrap cell will make the table scroll; that is intended, but
    the first column should still wrap rather than push the table past the
    viewport. */
@@ -1117,7 +1385,15 @@ html {
 	max-width: 100%;
 	min-width: 0;
 	overflow-wrap: break-word;
-}
+
+	/* A tag is a LABEL, not a paragraph: it must never wrap. As a flex item
+	   it defaulted to `0 1 auto`, so a `.cm-head-row` squeezed it below its
+	   content width and `overflow-wrap: break-word` broke "24 total" across
+	   two lines - measured 43px tall next to a 24px sibling with identical
+	   rules. `flex: 0 0 auto` keeps the content width when there is room;
+	   `max-width: 100%` still caps it on a narrow screen, and only then does
+	   the text wrap. */
+	flex: 0 0 auto;}
 .cm-tag--accent { border-color: var(--accent-dim); color: var(--ink); }
 
 /* ---------- state chip ----------
@@ -1579,6 +1855,24 @@ html {
 		   broken page, not a degraded one. Without JS the links stay on
 		   screen, stacked, which is tall but complete. */
 		flex-direction: column;
+		/* `nowrap` is load-bearing, and a column is what makes it
+		   matter. The drawer inherits `flex-wrap: wrap` from the bar
+		   rule above. With `flex-direction: column` that wrap runs
+		   ACROSS, not down: when the 16 rows no longer fit the panel's
+		   height, instead of scrolling they break into a second
+		   column at x=179 -- and the panel is only 320px wide, so
+		   `layout`, `forms`, `auth` and `readme` land outside it,
+		   unreachable, with `scrollHeight == clientHeight` so the
+		   drawer cannot scroll to them either. Measured at 402x667:
+		   12 rows in column one, 4 stranded in column two.
+
+		   The trigger is HEIGHT, not width, which is why a width
+		   sweep never finds it. The list needs 869px of panel; any
+		   viewport shorter than about 800px tall wraps. An iPhone SE
+		   with Safari's chrome is ~667px, so this is the common phone
+		   case, not an edge case. `nowrap` makes the one column
+		   overflow-y, which the panel already allows. */
+		flex-wrap: nowrap;
 		align-items: stretch;
 	}
 	.cm-js .cm-header__links { display: none; }
@@ -1728,6 +2022,39 @@ html {
 	grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
 	gap: 0 var(--gutter);
 }
+
+/* ONE control, with its own affordance on the right edge - a reveal
+   toggle, a clear button, a unit suffix. Not `.cm-field-row`: that is the
+   grid for two FIELDS side by side, so dropping a button in it makes the
+   button wrap to a second row and stop lining up with the value it acts
+   on. The affordance overlaps the field's padding and owns the right
+   `var(--tap)` of the box, so the target is a full tap square without
+   the control losing width. */
+.cm-field__control { position: relative; display: flex; }
+.cm-field__control > input { flex: 1 1 auto; min-width: 0; }
+/* The overlay is `var(--tap)` wide but the base input padding is only
+   0.7rem, so without this the value scrolls straight under the glyph -
+   the last few characters are simply hidden. Measured in WebKit at 390px
+   with a 28-character value: 11.2px of padding-right and a 2.3px gap.
+
+   The class is written TWICE on purpose. The base rule is
+   `input:not([type='checkbox']):not([type='radio']):not([type='range'])`
+   and, by the rule this library already uses to police specificity,
+   `:not()` contributes its ARGUMENT - three attribute selectors, so the
+   base lands at (0,6,1). A single `.cm-field__control:has(...)` only
+   reaches (0,3,1) and loses, no matter that components.css loads later.
+   Measured: the rule parsed, `:has()` was supported, and the computed
+   padding-right was still 11.2px. Source order cannot fix specificity;
+   the selector has to actually outrank the thing it is overriding. */
+.cm-field__control.cm-field__control:has(> .cm-icon-btn) > input {
+	padding-right: calc(var(--tap) + var(--space-2));
+}
+.cm-field__control > .cm-icon-btn {
+	position: absolute;
+	top: 50%;
+	right: 0;
+	transform: translateY(-50%);
+}
 .cm-form { display: flex; flex-direction: column; }
 /* actions sit apart from the last field and align to the right */
 .cm-form__actions {
@@ -1835,6 +2162,38 @@ html {
    over #fafafa hides the page by very different amounts, so the wash
    has to be theme-owned or the light theme gets an unusable dialog. */
 .cm-dialog::backdrop { background: var(--scrim); }
+
+/* A dialog anchored to the right edge instead of the centre: the same
+   native element, so focus trapping, Escape, the top layer and the
+   inertness of the page behind it are still the platform's job.
+
+   Templates used to hand-roll this as `fixed inset-0 flex justify-end`
+   plus a div for the scrim - which meant no focus trap, no Escape, and
+   the page behind stayed reachable by keyboard. Only the frame changes
+   here, so it inherits every one of those.
+
+   The sheet is full-width and flush on a phone, because a 32rem panel
+   centred on a 390px screen leaves the backdrop doing nothing. */
+.cm-dialog--sheet {
+	width: min(30rem, 100%);
+	height: 100%;
+	max-height: 100%;
+	margin: 0 0 0 auto;
+	border-radius: 0;
+	border-width: 0 0 0 1px;
+}
+@media (max-width: 640px) {
+	.cm-dialog--sheet {
+		width: 100%;
+		border-left-width: 0;
+	}
+}
+.cm-dialog--sheet .cm-dialog__head {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--bg-2);
+}
 .cm-dialog__head {
 	display: flex;
 	align-items: baseline;
@@ -2277,6 +2636,20 @@ html {
 	.cm-header--rail .cm-header__controls {
 		justify-content: flex-start;
 		padding: 0 var(--gutter);
+		/* Every OTHER control in the rail is a `.cm-header__link`, which the
+		   rail rule gives a full-width row and `--tap` of height. A control
+		   placed in `__controls` instead - a sign-out button, say - was
+		   aligned and padded but kept its inline height, so it measured
+		   31px against the same 44px floor as its siblings. A target that
+		   is smaller than the floor is still a target, so the floor has to
+		   follow the control into its own slot. */
+		align-items: stretch;
+	}
+	.cm-header--rail .cm-header__controls > .cm-btn,
+	.cm-header--rail .cm-header__controls > a {
+		display: flex;
+		align-items: center;
+		min-height: var(--tap);
 	}
 
 	/* `main` and the page shell move clear of the rail.
@@ -2307,6 +2680,32 @@ html {
 		max-width: var(--maxw);
 		margin-inline: auto;
 	}
+	/* ...and that is a PROSE measure, which is right for a content page
+	   and wrong for an application shell. `.cm-shell--rail--fill` is for
+	   the second case: a dashboard or admin panel whose columns should
+	   use the whole space beside the rail instead of being centred in
+	   it. Measured in WebKit on rpm at 1280px and 1440px: with the prose
+	   measure the page column's x moved 336 -> 416 as the window grew,
+	   because `margin-inline: auto` re-centres the capped child in
+	   whatever space is left. A table with fifteen columns does not want
+	   that; it wants the room. The rail's own padding is untouched, so
+	   the column still starts clear of the rail - only the cap and the
+	   centring are released. */
+	.cm-shell--rail--fill {
+		width: auto;
+		max-width: none;
+	}
+	.cm-shell--rail--fill,
+	.cm-shell--rail--fill > * {
+		width: auto;
+		max-width: none;
+		margin-inline: 0;
+	}
+	/* `width: auto` matters as much as `max-width: none`. base.css
+	   gives `main` `width: var(--maxw)`, so a rule that only relaxes
+	   the cap leaves the box 860px wide with `max-width: none`
+	   computed - which reads as fixed but is not. Measured: the
+	   shell was 1440px and main was still 860. */
 	/* The header itself must stop spanning the full width, or it would draw
 	   a bar over the top of the rail's column. It keeps the rail's own
 	   column, so `position: sticky` is dropped in favour of a fixed rail:
@@ -2659,6 +3058,343 @@ html {
 /* Muted fill for the domain a reader is least likely to care about,
    so the shape of the bar carries meaning too, not just its length. */
 .cm-meter--faint .cm-meter__fill { background: var(--line); }
+/* The row form: label, track and value on ONE line, for a ranked list -
+   "top paths", "referrers", a distribution - where a stack of the
+   default form spends a third of the screen on labels before the first
+   bar appears. The default form puts the value ABOVE the bar, which is
+   right for a standalone meter in a card and wrong in a ranked list: the
+   value has to stay in a column you can scan down.
+   The track is the only element allowed to grow (`flex: 1`), so the two
+   text columns keep their intrinsic width and the bars all start at the
+   same x. If the track were `flex: 0 1 auto` the bars would start
+   wherever the longest label happened to end, and the reader could no
+   longer compare two lengths by their left edge - which is the only
+   thing a bar chart is for. */
+.cm-meter--row {
+	flex-direction: row;
+	align-items: center;
+	gap: var(--space-2);
+}
+.cm-meter--row .cm-meter__label {
+	flex: 1 1 auto;
+	order: 2;
+	text-align: right;
+}
+.cm-meter--row .cm-meter__track {
+	flex: 1 1 0;
+	min-width: 4rem;
+	order: 1;
+}
+.cm-meter--row .cm-meter__val {
+	order: 3;
+}
+/* The share beside the count: a fourth column for a ranked row that
+   prints both. "4,210" is how many and "96.0%" is how much of the
+   total, and a reader scanning the list needs the first to compare
+   rows and the second to understand what the row costs them. It is
+   fixed-width so the percentages align on the decimal, which is the
+   only way a column of them can be scanned. */
+.cm-meter--row .cm-meter__note {
+	order: 4;
+	flex: 0 0 auto;
+	min-width: 3.5rem;
+	text-align: right;
+	font-size: max(var(--min-font), 0.78rem);
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	color: var(--ink-dim);
+}
+
+/* ---------- a sortable column header ----------
+   A `<th onClick>` is not a control: it is not focusable, Enter and
+   Space do nothing, and a screen reader never announces it as
+   actionable. The button goes INSIDE the th - that is what
+   `<th scope="col"><button aria-sort-…>` is for - and the button is
+   stretched across the whole cell so the whole header is the target,
+   not the four pixels of text. A 6px dot marks the live column: the
+   direction is a glyph, not a colour, because a sorted column and an
+   unsorted one differ in exactly one way a reader must not have to
+   infer from tint. */
+th.cm-table__sortcol {
+	padding: 0;
+	text-align: left;
+}
+th.cm-table__sortcol.right {
+	text-align: right;
+}
+button.cm-table__sort {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	width: 100%;
+	min-height: var(--tap);
+	padding: var(--space-2) var(--space-3);
+	border: 0;
+	background: none;
+	font: inherit;
+	color: inherit;
+	text-align: inherit;
+	cursor: pointer;
+	transition: color var(--cm-t) var(--cm-ease);
+}
+th.cm-table__sortcol.right button.cm-table__sort {
+	justify-content: flex-end;
+}
+button.cm-table__sort:hover {
+	color: var(--ink);
+}
+button.cm-table__sort:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+}
+button.cm-table__sort::after {
+	content: '';
+	width: 6px;
+	height: 6px;
+	flex: 0 0 auto;
+	border-radius: 50%;
+	background: transparent;
+}
+button.cm-table__sort[aria-sort='ascending']::after,
+button.cm-table__sort[aria-sort='descending']::after {
+	background: var(--ink-dim);
+}
+button.cm-table__sort[aria-sort='ascending']::after {
+	border-radius: 50% 50% 0 50%;
+	transform: rotate(45deg);
+}
+button.cm-table__sort[aria-sort='descending']::after {
+	border-radius: 50% 50% 50% 0;
+	transform: rotate(45deg);
+}
+
+/* ---------- icon sizing, decided by the container ----------
+   An icon set (lucide, feather, whatever) ships every glyph at a 24x24
+   viewBox and no intrinsic size, so an <svg> with no width and no
+   height renders at the CSS default replaced-element size of 300x150
+   unless something says otherwise.
+
+   That is why a consumer is tempted to write a utility class on every
+   single icon - "h-3.5 w-3.5" on 179 of them in this design system's
+   first real application. The repetition is the symptom: the size of
+   an icon is not a property of the icon, it is a property of the thing
+   holding it. A glyph in a button is one size, in a chip another, in a
+   44px row a third, and those are facts about the containers, not about
+   the glyphs.
+
+   So the containers decide, here, once, and the markup stops carrying a
+   size at all. An explicit inline width still wins, so a consumer that
+   genuinely needs a different size is not fighting this.
+
+   `1em` rather than a rem: an icon should track the text beside it, so
+   it inherits the control's own font size instead of being pinned to a
+   step on the type scale. */
+.cm-btn > svg,
+.cm-btn > .cm-spinner + svg,
+button.cm-row > svg,
+button.cm-row > span > svg {
+	flex: 0 0 auto;
+	width: 1em;
+	height: 1em;
+}
+.cm-stat__label > svg,
+.cm-meter__label > svg,
+.cm-tag > svg {
+	flex: 0 0 auto;
+	width: 1em;
+	height: 1em;
+}
+/* A chip is set smaller than a label, so its glyph is 0.9em. Stated here
+   rather than as an override of a rule this selector is also listed in:
+   two rules naming one selector means the second silently wins and no
+   reader can tell which of them is the real one. */
+.cm-chip > svg {
+	flex: 0 0 auto;
+	width: 0.9em;
+	height: 0.9em;
+}
+/* The label is a flex row so the glyph and the word sit on one baseline;
+   without this the icon is an inline replaced element with a descender
+   gap under it, and the pair looks like it is not quite aligned. */
+.cm-stat__label,
+.cm-meter__label {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+/* ---------- the count tile ----------
+   A small centred tile carrying one number and, under it, the bound
+   that gives the number meaning (">30 days"). `.cm-stat` is the same
+   idea left-aligned in a grid; a tile is centred and takes a note,
+   because a bucket count sitting beside the buckets it splits into
+   is read as a column, not as prose.
+
+   The buckets in this pattern (healthy / expiring / expired) are a
+   severity scale, so the tier is a MODIFIER that defaults to
+   unmarked: a bucket with something in it gets the mark, a bucket
+   with nothing does not. That is the whole point - a healthy system
+   should show no severity marking anywhere on the page. */
+.cm-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+	padding: var(--space-3);
+	background: var(--bg-2);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	text-align: center;
+}
+.cm-tile__label {
+	font-size: max(var(--min-font), 0.66rem);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--ink-dim);
+}
+.cm-tile__val {
+	font-size: max(var(--min-font), 1.35rem);
+	font-weight: 700;
+	line-height: 1.1;
+	font-variant-numeric: tabular-nums;
+}
+.cm-tile__note {
+	font-size: max(var(--min-font), 0.62rem);
+	color: var(--ink-faint);
+}
+/* The severity tiers, exactly as cm-alert and cm-chip do them: a
+   glyph, not a tint. The label already names the bucket, so colour
+   would be a redundant second channel carrying less information than
+   the word does. `--ink` for err because err has no colour token in
+   this system - the weight of the rule IS the signal. */
+.cm-tile--warn .cm-tile__label::before {
+	content: '\25b2\00a0';
+}
+.cm-tile--err .cm-tile__label::before {
+	content: '\2716\00a0';
+	/* The one glyph difference between the two tiers. Both are drawn in
+	   --ink by the label rule, so warning and error are told apart by
+	   their SHAPE, which survives a greyscale print and a colour-vision
+	   difference; a difference of hue would not. */
+}
+/* No font-size on the glyph: the label is already at the 0.66rem floor
+   and a fractional em scales it under the 12px minimum, which the
+   tap-floor contract test rejects. The glyph inherits the floor. */
+.cm-tile--warn .cm-tile__label::before,
+.cm-tile--err .cm-tile__label::before {
+	margin-right: 0.3em;
+}
+.cm-tile--warn .cm-tile__val,
+.cm-tile--err .cm-tile__val {
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+	text-decoration-thickness: 2px;
+}
+/* An empty bucket reads as empty, not as a problem. Without this the
+   tile takes its tier from the BUCKET rather than its contents and a
+   perfectly healthy system is a wall of amber and red. */
+.cm-tile--empty {
+	background: transparent;
+	border-color: var(--line-soft);
+}
+.cm-tile--empty .cm-tile__label,
+.cm-tile--empty .cm-tile__val {
+	color: var(--ink-faint);
+	text-decoration: none;
+}
+
+/* ---------- the inline navigation affordance ----------
+   "Renew immediately on the Certificates page", where the page name
+   jumps to that page. As a bare <span onClick> it is invisible to a
+   keyboard and missing from a screen reader's list of controls: no
+   role, no tab stop, no announcement. The fix is not to style the
+   span harder, it is to make it a <button> - this app navigates in
+   client state and there is no href to be had.
+
+   `display: inline` rather than inline-block so it keeps the prose's
+   baseline and line-breaking, which is the reason it exists. */
+button.cm-link {
+	display: inline;
+	padding: 0;
+	border: 0;
+	background: none;
+	font: inherit;
+	color: var(--accent);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+	cursor: pointer;
+}
+button.cm-link:hover { color: var(--accent-bright); }
+button.cm-link:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+/* ---------- grouped rail nav ----------
+   An application rail has labelled groups (Hosting, Security, Monitoring).
+   The base `.cm-header__links` is a flat list of destinations, and a
+   consumer faking groups with a heading row inside it gets two defects
+   that no source check sees:
+     1. the heading inherits `min-height: var(--tap)` and the flex row
+        layout, so a label sits in a 44px target that is not one; and
+     2. `> .cm-header__link` matches nothing for the heading, so the
+        heading paints unstyled while every sibling link is styled -
+        the group label is the only visible oddity on the rail.
+   So the group owns its own element rather than borrowing a link's.
+
+   `.cm-header__group` is a WRAPPER: the heading must not be a grid or
+   flex item that takes its own track, and it must not be a
+   `.cm-header__link`. The list inside resets the tap floor's spacing so
+   grouped and ungrouped rails have identical link geometry. */
+/* The COLUMN is a rail-only claim. On a phone the rail collapses into the
+   horizontal disclosure, where `.cm-header__links` is a wrapping row; a
+   column group there is 319px wide inside a 390px viewport and pushes the
+   whole page into sideways scroll (measured in WebKit at 390px: scrollWidth
+   431 against clientWidth 390, 24 elements past the edge). So the grouping
+   lives at RAIL width and dissolves into the row above it below that. */
+.cm-header--rail .cm-header__group {
+	display: flex;
+	flex-direction: column;
+	align-self: stretch;
+	/* `width: 100%` on a flex ITEM resolves against the PARENT, so a group
+	   inside the phone's horizontal scroller became 319px wide - exactly
+	   the rail's width - while the page behind it was 390px with the nav
+	   already scrolled to 319px, and the group dragged the DOCUMENT into
+	   sideways scroll (WebKit, 390px: scrollWidth 431 vs clientWidth 390).
+	   `flex: 0 1 auto` + `max-width: 100%` lets a group be its content's
+	   width and never wider than the box it sits in. */
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 100%;
+}
+/* A grouped rail keeps its COLUMN at every width, and the phone scrolls the
+   NAV, not the page. `.cm-header__links` is the scroll container, so it is
+   the element that must be bounded: without `width: 100%` + `min-width: 0`
+   a flex child resolves its width from its CONTENT, the row becomes 553px
+   at a 390px viewport, and the document (not the nav) scrolls sideways. */
+.cm-header__links:has(> .cm-header__group) {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+}
+.cm-header--rail .cm-header__group + .cm-header__group { margin-top: var(--space-4); }
+.cm-header--rail .cm-header__group-label {
+	display: block;
+	padding: 0 var(--gutter);
+	margin-bottom: var(--space-1);
+	color: var(--ink-faint);
+	font-size: var(--min-font);
+	line-height: 1.6;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	/* A heading is not a target. It must never inherit --tap, or a
+	   screen reader and a thumb both see a 44px interactive box that
+	   does nothing when pressed. */
+	min-height: 0;
+	font-weight: 400;
+}
+.cm-header--rail .cm-header__group .cm-header__links { gap: 0; }
 
 /* ------------------------------------------------------- auth surfaces
    A sign-in screen is a form, a card and an alert that happen to be about
@@ -2683,6 +3419,505 @@ html {
    text field - it must be legible as a code, centred, tracked out and
    sized for a thumb. Everything else composes existing components. */
 
+/* ---------- selection + state marks ----------
+   Two roles every data surface needs and that this library did not own, so
+   twelve consumers each invented one - and invented them in HUE: 28 distinct
+   raw Tailwind colours across the pages, a red dot for "off", a green dot for
+   "on", a primary ring for "selected". None of that survives a greyscale
+   print, and none of it is a design decision anybody made.
+
+   The library's rule is glyph + weight, never hue, so both marks carry the
+   meaning in SHAPE and WEIGHT and take colour only from the ink ramp.
+
+   Selection is a left rule plus a faint tint, not an outline: an outline
+   competes with the row's own border and reads as "this box is different",
+   which is exactly what it is - but the weight lands on one edge so a list
+   of them scans as a column. */
+.cm-section--on {
+	border-color: var(--ink-dim);
+	background: var(--bg-2);
+	box-shadow: inset 3px 0 0 var(--ink);
+}
+
+/* A live/off indicator. `aria-hidden` is the caller's job: the mark is
+   decoration beside a label that already says what it means. */
+.cm-dot {
+	display: inline-block;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	border: 1px solid var(--ink-faint);
+	background: transparent;
+	flex: 0 0 auto;
+}
+/* "On" is a FILLED mark; "off" is the hollow one. Weight, not hue - the
+   same distinction the chips make with a glyph. */
+.cm-dot--on {
+	background: var(--ink);
+	border-color: var(--ink);
+}
+
+/* ---------- inline edit: a value that becomes a field ----------
+   A data surface is mostly values you want to change in place, and every
+   consumer reinvented it: a span that becomes an input on double-click,
+   with its own padding, border and focus ring written out again each time.
+
+   The DISPLAY half is a span with a dotted underline, not a box - a box on
+   every cell turns a table into a form, and the affordance disappears into
+   the chrome. The hover/focus underline is what says "this is editable".
+
+   `cm-inline` is display + affordance, `cm-inline--wide` the wider measure a
+   domain or URL needs, and `cm-inline__input` the editing half. The input
+   inherits the field treatment so it does not change size when it appears. */
+.cm-inline {
+	cursor: text;
+	border-bottom: 1px dotted var(--line);
+	padding-bottom: var(--space-1);
+	max-width: 22rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	display: inline-block;
+	vertical-align: bottom;
+}
+.cm-inline:hover,
+.cm-inline:focus-visible {
+	border-bottom-color: var(--ink-dim);
+}
+/* Keyboard users get the same affordance as the mouse. */
+.cm-inline:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+.cm-inline--wide { max-width: 32rem; }
+
+/* An IP or a PORT is a short value, and an input sized by
+   `width: 100%` inside a `cm-row__meta` strip is sized by whatever
+   space is left - which on a phone is nothing, so the field collapses
+   and there is nothing to click. `.cm-inline__input--tight` is a width
+   for the INPUT, sized to the longest value the field actually takes:
+   an IPv4 address at the mono 0.82rem, and comfortably more than a
+   5-digit port. `ch` units so it tracks the font rather than a hard px.
+   `.cm-inline--wide` above is a max-width on the DISPLAY span, which
+   is a different thing and does not size the input. */
+
+.cm-inline__input {
+	display: inline-block;
+	width: 100%;
+	max-width: inherit;
+	font: inherit;
+	color: var(--ink);
+	background: var(--bg);
+	border: 1px solid var(--ink-dim);
+	border-radius: var(--radius-sm);
+	padding: 0 var(--space-1);
+}
+/* The class is DOUBLED, and it is the base layer that forces it. The
+   `input:not([type=checkbox]):not([type=radio]):not([type=range])`
+   rule in base.css is (0,6,1) and declares `width: 100%`; a plain
+   `.cm-inline__input--tight` is (0,1,0) and loses outright - source
+   order is irrelevant. Measured in WebKit: 386px instead of 11ch, at
+   1280px and at 390px. Doubling the class takes it to (0,2,0), which
+   still LOSES, so it is doubled AND declared after - and the
+   declaration the browser actually used was `width: 386px` from the
+   base rule, with `flex-basis: auto` on a `0 1 auto` flex item. */
+.cm-inline__input.cm-inline__input--tight {
+	width: 11ch;
+	max-width: none;
+	min-width: 0;
+}
+.cm-inline__input:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 1px;
+}
+
+/* ---------- action toolbar: the row that acts on a selection ----------
+   A multi-select surface needs one bar that follows the selection, and
+   three consumers each wrote it as a sticky flex row with their own border,
+   background, shadow and z-index.
+
+   It sticks to the BOTTOM, because the selection count lives at the top of
+   the page and the actions belong where the thumb already is. The count is
+   aria-live so a select-all announces itself, and the whole bar is a
+   toolbar so a screen reader reads it as one group rather than five
+   unrelated buttons. */
+.cm-toolbar {
+	position: sticky;
+	bottom: 0;
+	z-index: 10;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	margin-top: var(--space-4);
+	padding: var(--space-3);
+	background: var(--panel);
+	border: 1px solid var(--ink-dim);
+	border-radius: var(--radius-sm);
+	/* A bar that floats over the list needs the theme's own shadow, not a
+	   hardcoded one, or it disappears into a dark page. */
+	box-shadow: var(--shadow-card);
+}
+.cm-toolbar__count {
+	color: var(--ink-dim);
+	font-size: max(var(--min-font), 0.78rem);
+	margin-right: var(--space-2);
+}
+
+/* ---------- check row: a bare checkbox in a tappable label ----------
+   The library already styles `input[type=checkbox]` down to the tick, so the
+   control needs no class. What was missing is the ROW: a label whose hit
+   area is the word and the box, not the 17px box alone. Twenty-three
+   checkboxes across six surfaces each wrote their own flex row with their
+   own gap, and at 390px the label text is the only comfortable target.
+
+   The row carries the tap floor, so the label is the control: clicking the
+   word toggles the box, which is what a person aims at. `gap` and `align`
+   come from the scale. */
+.cm-check {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: var(--tap);
+	color: var(--ink-dim);
+	font-size: max(var(--min-font), 0.85rem);
+	cursor: pointer;
+}
+.cm-check:hover { color: var(--ink); }
+/* The box is drawn by base.css; without this the checkbox is a flex child
+   and a 17px box next to 15px text sits on the wrong optical line. */
+.cm-check > input[type='checkbox'] { align-self: center; }
+
+/* ---------- switch: the on/off row that is not a checkbox ----------
+   `cm-check` covers "yes, include this row". A switch answers "this whole
+   behaviour is on or off" and reads as a different kind of thing, so it
+   gets its own control rather than a checkbox wearing a different shape.
+
+   The state is carried by the knob's position, not by hue, and the track
+   fills with the ink token on a neutral --ink-dim otherwise. The input
+   stays in the DOM, on top, at zero opacity: it is the focus target, the
+   tap target and the form value, so a person using a keyboard or a screen
+   reader reaches the real control and not a div with a click handler.
+
+   Templates hand-rolled this as two absolutely-positioned divs with a
+   translate on a colour change, which meant the control was a div, had
+   no role, no name, and no keyboard path at all. */
+.cm-switch {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	cursor: pointer;
+}
+.cm-switch > input[type='checkbox'] {
+	position: absolute;
+	inset: 0;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+.cm-switch__track {
+	position: relative;
+	display: block;
+	width: var(--track-w);
+	height: var(--track-h);
+	border-radius: 999px;
+	background: var(--ink-dim);
+	transition: background var(--cm-t) var(--cm-ease);
+}
+/* The knob is a hair shorter than the track, so the 1px ring around it
+   reads as a gap rather than as a shadow when the switch is off. */
+.cm-switch__knob {
+	position: absolute;
+	top: 50%;
+	left: var(--knob-inset);
+	width: var(--knob-d);
+	height: var(--knob-d);
+	transform: translateY(-50%);
+	border-radius: 999px;
+	background: var(--bg);
+	border: 1px solid var(--ink-dim);
+	transition: transform var(--cm-t) var(--cm-ease);
+}
+.cm-switch > input:checked ~ .cm-switch__track { background: var(--ink); }
+.cm-switch > input:checked ~ .cm-switch__track .cm-switch__knob {
+	transform: translateY(-50%) translateX(calc(var(--track-w) - var(--knob-d) - (2 * var(--knob-inset)) - 1px));
+	border-color: var(--ink);
+}
+/* Focus lives on the real input, so it is drawn on the track - otherwise a
+   keyboard user has no idea which row they are on. */
+.cm-switch > input:focus-visible ~ .cm-switch__track {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+
+/* ---------- page head badge: the square glyph on a title row ----------
+   Seven pages each drew a gradient square beside the page title, in seven
+   different gradients. The library forbids gradients - glyph + weight is
+   the whole palette - so the badge is an inset square on the ink token,
+   the same mark `.cm-section--on` already uses to show selection.
+
+   It sits next to a button on every one of those pages, so it takes the
+   tap floor on a touch viewport even though it is not itself a target. */
+.cm-head__badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	flex: 0 0 auto;
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--ink-dim);
+	background: var(--bg-2);
+	box-shadow: inset 3px 0 0 var(--ink);
+	color: var(--ink);
+}
+.cm-head__badge > svg { height: 1rem; width: 1rem; }
+
+/* ---------- segmented control ----------
+
+   A small set of mutually exclusive choices, one of which is always
+   selected. The platform has no widget for this, and it is not a tab
+   bar: tabs switch PANELS and the control spans the full width, while
+   a segmented control is a compact inline choice sitting inside a
+   form row - "allow / deny", "on / off", "http / https".
+
+   The selected option is marked with an inset rule and a panel fill,
+   the same two signals `.cm-tabs__tab[aria-selected]` uses, for the
+   same reason: a thicker border would widen the box and walk the row
+   sideways. Markup is a group of real <button>s, so it is focusable
+   and activatable before any script binds.
+
+   `[aria-pressed]` rather than a class, so the visual state cannot
+   drift from what assistive tech is told. */
+
+.cm-seg {
+	display: inline-flex;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--bg-3);
+	overflow: hidden;
+	max-width: 100%;
+	/* A long option set wraps onto a second line rather than running
+	   off the edge of a 390px screen. */
+	flex-wrap: wrap;
+}
+.cm-seg__opt {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	margin: 0;
+	padding: var(--space-2) var(--space-4);
+	border: 0;
+	border-right: 1px solid var(--line);
+	background: transparent;
+	color: var(--ink-dim);
+	font-family: var(--font-mono);
+	font-size: max(var(--min-font), 0.78rem);
+	letter-spacing: 0.04em;
+	text-transform: lowercase;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: color var(--cm-t) var(--cm-ease),
+		background var(--cm-t) var(--cm-ease);
+}
+.cm-seg__opt:last-child { border-right: 0; }
+.cm-seg__opt:hover { color: var(--ink); background: var(--panel); }
+.cm-seg__opt[aria-pressed='true'] {
+	color: var(--ink);
+	background: var(--panel);
+	box-shadow: inset 0 -2px 0 var(--ink);
+}
+/* A coarse pointer gets the same floor every other control carries, so
+   the option is not a 24px sliver of a 390px screen. */
+@media (pointer: coarse) {
+	.cm-seg__opt { min-height: var(--tap); }
+}
+/* Long option sets wrap onto a second line rather than running off the
+   edge; the control is inline-flex, so it is the ROW that wraps. */
+
+/* ---------- disclosure ----------
+
+   A summary row that reveals a panel. Native-first where the platform
+   helps and wrong where it does not: <details>/<summary> gives keyboard
+   and find-in-page for free, but the marker is a browser triangle the
+   library cannot restyle into the mono look, so `.cm-disclosure`
+   HIDES it and draws the affordance as a glyph slot instead.
+
+   `hidden` on the panel is the mechanism, and any author `display`
+   outranks the UA sheet, so it is stated explicitly - otherwise a
+   panel that was open at paint stays visible after it is closed. */
+
+.cm-disclosure {
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--panel);
+	min-width: 0;
+}
+.cm-disclosure__summary {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-4);
+	cursor: pointer;
+	list-style: none;
+	color: var(--ink);
+	font-family: var(--font-mono);
+	font-size: max(var(--min-font), 0.82rem);
+}
+/* Remove the marker in the engines that need it asked for. */
+.cm-disclosure__summary::-webkit-details-marker { display: none; }
+.cm-disclosure__summary:hover { background: var(--bg-3); }
+.cm-disclosure__summary:focus-visible { outline-offset: -2px; }
+/* The chevron points at the thing it opens, so it turns with state.
+   `--mark` is a token because the rotation is the only thing that
+   changes - the glyph and its ink are inherited. */
+.cm-disclosure__mark {
+	display: inline-flex;
+	flex: 0 0 auto;
+	color: var(--ink-dim);
+	transition: transform var(--cm-t) var(--cm-ease);
+}
+.cm-disclosure[open] > .cm-disclosure__summary .cm-disclosure__mark {
+	transform: rotate(90deg);
+}
+.cm-disclosure__title { flex: 1 1 auto; min-width: 0; }
+/* The one interactive thing a summary may contain. `margin-left: auto`
+   walks it to the far end of the row so the row still reads as one line
+   of summary text, and `align-self` keeps it off the tap floor's optical
+   line when the summary wraps at 390px. */
+.cm-disclosure__action {
+	margin-left: auto;
+	align-self: center;
+}
+.cm-disclosure__body {
+	padding: 0 var(--space-4) var(--space-4);
+	border-top: 1px solid var(--line);
+}
+/* A disclosure that belongs to the inside of something else rather than
+   standing on its own. `cm-disclosure` is a bordered box with its own
+   panel background, which is right when it is a section of its own and
+   wrong when it is the bottom half of a record row: there it has to be
+   flush, unboxed, and share the row's bottom edge, or every record card
+   ends in a second frame.
+
+/* ---------- code: a monospace block for JSON, config, and output ----------
+   `cm-code-input` is NOT this: it is the centred, letter-spaced field for
+   a one-time code, and applying it to a JSON textarea centres the text and
+   spaces every character apart. Same "code" in the name, unrelated job.
+
+   This is the read/write surface for structured text. Every record in
+   Streams, ProxyHosts, Certificates and Access Lists can carry a meta
+   JSON blob, and all four were hand-rolling the same textarea and the
+   same <pre> beside it, each with its own height and its own border
+   colour. The one thing they must agree on is that the two are the same
+   object: a block you read and a block you edit, in the same type and
+   the same frame, so switching between them does not move the text. */
+.cm-code {
+	width: 100%;
+	font-family: var(--font-mono);
+	font-size: max(var(--min-font), 0.82rem);
+	line-height: 1.5;
+	color: var(--ink-dim);
+	background: var(--bg);
+	border: 1px solid var(--ink-dim);
+	border-radius: var(--radius-sm);
+	padding: var(--space-2);
+	min-width: 0;
+}
+textarea.cm-code {
+	resize: vertical;
+	/* A textarea is its own scroll box; the browser's default resize grip
+	   sits in the padding and catches the click. */
+	min-height: var(--tap);
+}
+.cm-code:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 1px;
+}
+/* An invalid field is marked by the ink, not by a red border. The page
+   already prints the message through `.cm-field__error` right below the
+   control, so the border is a SECOND signal for a fact already on screen -
+   and a red one is the single hue that does not survive a dark theme, a
+   greyscale print, or the ~8% of men with a red-green colour deficiency.
+   What the reader needs is to know WHICH control to look at, so it is
+   marked with a heavier ink rule under the same box. */
+.cm-code[aria-invalid='true'] {
+	border-color: var(--ink);
+	box-shadow: inset 0 -2px 0 var(--ink);
+}
+.cm-code[aria-invalid='true']:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 1px;
+}
+
+/* ---------- status code: a glyph, never a hue ----------
+   An HTTP status is the clearest case in the app for "glyph + weight,
+   never hue". A log is exactly where a colour is least useful: it is the
+   one view a person reads at a glance, in greyscale print, or with any
+   colour vision at all, and a wall of red 4xx and green 2xx rows is
+   unreadable in all three. So the class carries a MARKER and weight, and
+   the digits stay right there for anyone who wants the precise code. */
+.cm-status-code {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	font-weight: 700;
+}
+.cm-status-code--ok { color: var(--ink); }
+.cm-status-code--warn { color: var(--ink-dim); }
+.cm-status-code--err {
+	color: var(--ink);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+/* ---------- the flush disclosure ----------
+   A disclosure that belongs to the inside of something else rather than
+   standing on its own. `cm-disclosure` is a bordered box with its own
+   panel background, which is right when it is a section of its own and
+   wrong when it is the bottom half of a record row: there it has to be
+   flush, unboxed, and share the row's bottom edge, or every record card
+   ends in a second frame.
+
+   The summary keeps the tap floor in both forms - a disclosure row is
+   the control, and the summary is only its label. */
+.cm-disclosure--flush {
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+.cm-disclosure--flush .cm-disclosure__summary {
+	padding: var(--space-2) var(--space-3);
+}
+.cm-disclosure--flush .cm-disclosure__body {
+	padding: 0 var(--space-3) var(--space-3);
+	border-top: 0;
+}
+
+/* `hidden` is the mechanism, and any author `display` outranks the UA
+   sheet - so say it, or a panel that was open at paint stays visible
+   after it is closed. */
+.cm-disclosure__body[hidden] { display: none; }
+.cm-disclosure__body > :first-child { margin-top: var(--space-4); }
+.cm-disclosure__body > :last-child { margin-bottom: 0; }
+
+/* ---------- record stack ----------
+
+   A data page is a vertical run of records, and Tailwind's `space-y-*` is
+   what every one of them reached for - eleven surfaces wrote the same
+   one-line gap by hand, each one a different value. `.cm-rows` resets the
+   list but deliberately carries no gap: a `<ul>` of records can be flush
+   (a table-like ledger) or stacked (cards with air between them), and the
+   list element cannot know which. So the stack is its own class, opt-in,
+   and the gap comes off the scale. */
+.cm-stack {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
 .cm-auth {
 	min-height: 100dvh;
 	display: grid;
@@ -2702,6 +3937,19 @@ html {
 .cm-auth--wide > * { max-width: 34rem; }
 
 .cm-card--auth { padding: var(--space-5); gap: var(--space-4); }
+
+/* An icon inside a card or a title sizes ITSELF from the type it sits
+   beside. The sign-in page was passing `style={{ width: 22, height: 22 }}`
+   per icon, which is layout in the markup and means a glyph that is 22px
+   on one page and 16px on the next. The container decides. */
+.cm-card--auth > svg,
+.cm-head__title > svg {
+	width: 1.15em;
+	height: 1.15em;
+	flex: 0 0 auto;
+	vertical-align: -0.18em;
+	margin-right: 0.35em;
+}
 /* The card carries the padding, so the head and the body must BOTH give
    it up. Zeroing only the head left the title 16px left of the first
    field - measured in WebKit at 390px and 1100px, in both cards. A
