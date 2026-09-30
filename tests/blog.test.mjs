@@ -246,6 +246,76 @@ test('no font-size in a scoped block is below the mobile floor', () => {
 
 /* ---------- the theme handoff ---------- */
 
+/* ---------- the header is the library's, not a second copy ---------- */
+
+test('the header is the library component, not a hand-rolled bar', () => {
+	// The migration that removed this project's second design system left
+	// ONE second implementation standing: the header. 170 lines of scoped
+	// CSS in one component - its own sticky bar, brand, pipe-separated nav,
+	// theme toggle, GitHub link and three breakpoints - and the library has
+	// owned every one of those since before the blog's rows were migrated.
+	//
+	// Measured in WebKit at 390x844, that copy was 121px tall (the nav
+	// wrapped onto a second row) and its theme toggle measured 32x44: a
+	// pill. Both defects are in classes the library defines and this
+	// component did not use.
+	const hdr = src('components/Header.astro');
+	const markup = hdr.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<!--[\s\S]*?-->/g, '');
+
+	// It renders the library's markup...
+	for (const c of ['cm-header', 'cm-header__nav', 'cm-header__brand',
+		'cm-header__links', 'cm-header__controls', 'cm-icon-btn']) {
+		assert.ok(markup.includes(c), `Header.astro no longer emits .${c}`);
+	}
+	// ...and it does not carry a second stylesheet for it. ONE narrow
+	// metric block is allowed (the mid-width link tightening the library
+	// itself ships); a second is a second implementation returning.
+	const blocks = hdr.match(/<style>[\s\S]*?<\/style>/g) || [];
+	const selectors = blocks.join('\n').match(/\.[a-z][a-z0-9_-]*\{/g) || [];
+	for (const sel of ['.header{', '.nav{', '.brand{', '.internal-links', '.theme-toggle',
+		'.controls{', '.cursor{']) {
+		assert.ok(!selectors.join('').includes(sel),
+			`Header.astro is re-declaring ${sel} in a scoped block; the library owns it`);
+	}
+});
+
+test('the current nav link is decided by the library, not by this project', () => {
+	// Four pages each decided "which link is am I on" by hand, in a
+	// .nav-active class the library cannot see. HeaderLink owns that
+	// decision, and it normalises the trailing slash, the query, the hash
+	// and the site base before comparing - which is why /blog stays
+	// current on /blog/a-post and on /blog/.
+	const hdr = src('components/Header.astro');
+	assert.ok(/import\s+HeaderLink\s+from/.test(hdr),
+		'Header.astro must use the library\'s <HeaderLink>, which owns the current-page match');
+	assert.ok(/<HeaderLink/.test(hdr),
+		'Header.astro renders no <HeaderLink>, so no nav link can be aria-current');
+	// The old hand-computed state must be gone from this project entirely.
+	const hl = src('components/HeaderLink.astro');
+	assert.ok(!/nav-active/.test(hl),
+		'HeaderLink.astro still adds the local .nav-active class instead of aria-current');
+	// And the library's component must actually be in use, imported from
+	// the library's own file rather than a stale local fork.
+	const lib = readFileSync('/root/projects/oem-ui/src/astro/HeaderLink.astro', 'utf8');
+	const norm = /const strip = /.test(lib);
+	assert.ok(norm,
+		'cannot read the library HeaderLink; the local copy may have drifted from it');
+});
+
+test('the site identity comes from one config, not three places', () => {
+	// config.ts calls itself "the ONE place to set your identity". The blog
+	// kept its title in src/consts.ts and its GitHub URL inline in the
+	// header's markup. Header.astro now reads SITE from components/config.
+	const cfg = src('components/config.ts');
+	const hdr = src('components/Header.astro');
+	assert.ok(/export const SITE/.test(cfg), 'components/config.ts must export SITE');
+	assert.ok(/from ['"]\.\/config['"]/.test(hdr), 'Header.astro must read SITE from ./config');
+	// No literal repo URL in the header markup any more.
+	const markup = hdr.replace(/<!--[\s\S]*?-->/g, '').replace(/<style>[\s\S]*?<\/style>/g, '');
+	assert.ok(!/https:\/\/github\.com\/[a-z]/i.test(markup),
+		'Header.astro hardcodes a github.com URL in its markup; that is what SITE.github is for');
+});
+
 test('every entry point declares the project theme key and the runtime', () => {
 	const entries = ['pages/index.astro', 'pages/about.astro', 'pages/blog/index.astro', 'layouts/BlogPost.astro'];
 	for (const e of entries) {

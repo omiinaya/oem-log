@@ -1,171 +1,209 @@
 ---
-import { SITE_TITLE, AUTHOR_HANDLE } from '../consts';
+/**
+ * oem-ui <Header> — the library's sticky top nav.
+ *
+ * Copied verbatim from /root/projects/oem-ui/src/astro/Header.astro on
+ * 2026-09-30. Before this, the blog carried 170 lines of scoped CSS in
+ * this file: its own sticky bar, brand, pipe-separated nav, theme
+ * toggle, GitHub link, and three breakpoint blocks.
+ *
+ * Two things that were WRONG here, both measured in WebKit at 390x844,
+ * and both fixed by adopting the library's surface instead of copying it:
+ *
+ *   1. The header was 121px tall on a phone - two rows. The hand-rolled
+ *      nav wrapped below the brand because it was a plain flex row with
+ *      its own metrics, and nothing stopped the wrap. The library's
+ *      header is one row with a burger, so the nav is a disclosure
+ *      instead of a wall.
+ *   2. The theme toggle measured 32x44 - a pill. base.css gives every
+ *      button min-height: var(--tap) on a coarse pointer, and the
+ *      hand-rolled toggle declared only width and height, so the floor
+ *      stretched a 32px box into a 44-tall one too narrow to hit. The
+ *      library's `.cm-icon-btn` pins BOTH dimensions from --tap.
+ *
+ * Also: the nav links here were bare <a> with no class at all, so
+ * `.cm-header__link[aria-current='page']` could not see them and the
+ * "which page am I on" state was a hand-rolled `.nav-active` in a
+ * second stylesheet. HeaderLink owns that decision now.
+ *
+ * Site identity comes from props; `import.meta.env.BASE_URL` is the
+ * prefix for a site served under a sub-path. The GitHub mark ships WITH
+ * the link in the library, so it cannot render as a zero-width box.
+ */
+import { SITE } from './config';
 import HeaderLink from './HeaderLink.astro';
+
+/**
+ * Built-in marks for the well-known icon links a header carries.
+ *
+ * These live in the LIBRARY rather than in each consumer because the
+ * absence is invisible until someone notices the button is missing: a
+ * header that renders `<a class="cm-header__icon-link"><span
+ * class="cm-sr-only">GitHub</span></a>` and nothing else gets a correct,
+ * focusable link and no pixels, and the only symptom is a zero-width box
+ * in the header. Shipping the mark with the link makes the two impossible
+ * to separate.
+ *
+ * 16x16, currentColor, `fill` -- so the mark inherits the header's ink and
+ * its hover state with no per-consumer CSS.
+ */
+const ICON: Record<string, string> = {
+	github:
+		'<svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18">' +
+		'<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>' +
+		'</svg>',
+};
+
+interface Link {
+	href: string;
+	label: string;
+	/** Escape hatch: decide it yourself. Normally HeaderLink does. */
+	active?: boolean;
+	spy?: string;
+}
+
+interface Props {
+	links?: Link[];
+	brand?: string;
+	homeHref?: string;
+	showThemeToggle?: boolean;
+	extraLinks?: Link[];
+}
+
+const {
+	links = [],
+	brand = SITE.title,
+	homeHref = '/',
+	showThemeToggle = true,
+	extraLinks = [],
+} = Astro.props as Props;
+
+const base = import.meta.env.BASE_URL;
+
+/* The three destinations this blog actually has, in a layout-appropriate
+   order. `active` is a statement about WHERE YOU ARE - one link, the
+   current page - and HeaderLink derives it from the URL rather than from
+   four hand-written booleans, one per page, that drift the moment a path
+   changes. The library's HeaderLink normalises the trailing slash, the
+   query, the hash and the site base before comparing, and refuses to treat
+   an external href as local, so `/blog` stays current on `/blog/`.
+   The library keeps that apart from the scroll-spy's `is-active`, because
+   on a single-page site both would be true of the same link at once. */
+const nav = [
+	{ href: base, label: 'home' },
+	{ href: `${base}blog/`, label: 'notes' },
+	{ href: `${base}about/`, label: 'about' },
+];
+
+const allLinks: Link[] = [...links, ...nav];
+const anySpy = allLinks.some((l) => l.spy);
 ---
 
-<header>
-	<nav>
-		<a href={`${import.meta.env.BASE_URL}`} class="brand" aria-label="Home">
-			<span class="brand-prompt" aria-hidden="true">$</span>
-			<span class="brand-name">{SITE_TITLE}</span>
-			<span class="cursor" aria-hidden="true"></span>
+<header
+	class:list={['cm-header', allLinks.length > 0 && 'cm-header--nav']}
+	data-cm-header
+>
+	<nav class="cm-header__nav">
+		{
+			allLinks.length > 0 && (
+				<button
+					class="cm-icon-btn cm-nav-toggle"
+					type="button"
+					data-cm-nav-toggle
+					aria-expanded="false"
+					aria-controls="cm-header-links"
+					aria-label="Menu"
+					title="Menu"
+				>
+					<span class="cm-nav-toggle__bars" aria-hidden="true">
+						<span class="cm-nav-toggle__bar" />
+					</span>
+				</button>
+			)
+		}
+
+		<a href={homeHref} class="cm-header__brand" aria-label="Home">
+			<span class="cm-header__prompt" aria-hidden="true">$</span>
+			<span class="cm-header__name">{brand}</span>
+			<span class="cm-cursor" aria-hidden="true"></span>
 		</a>
 
-		<div class="internal-links">
-			<HeaderLink href={`${import.meta.env.BASE_URL}`}>home</HeaderLink>
-			<HeaderLink href={`${import.meta.env.BASE_URL}blog/`}>notes</HeaderLink>
-			<HeaderLink href={`${import.meta.env.BASE_URL}about/`}>about</HeaderLink>
-		</div>
+		{
+			allLinks.length > 0 && (
+				<div
+					class="cm-header__links"
+					id="cm-header-links"
+					data-cm-nav={anySpy ? true : undefined}
+				>
+					{allLinks.map((l) => (
+						<HeaderLink
+							href={l.href}
+							matchSegment={l.label === 'notes' || l.href === `${base}blog/` || l.href === `${base}blog`}
+							active={l.active}
+						>
+							{l.label}
+						</HeaderLink>
+					))}
+				</div>
+			)
+		}
 
-		<div class="controls">
-			<button class="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
-				<span class="icon" aria-hidden="true"></span>
-			</button>
-			<a href={`https://github.com/${AUTHOR_HANDLE}`} target="_blank" rel="me" aria-label="GitHub">
-				<span class="cm-sr-only">GitHub</span>
-				<svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18">
-					<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-				</svg>
-			</a>
+		<div class="cm-header__controls">
+			{
+				showThemeToggle && (
+					<button
+						class="cm-icon-btn"
+						type="button"
+						data-cm-theme-toggle
+						aria-label="Toggle theme"
+						title="Toggle theme"
+					>
+						<span data-cm-theme-icon aria-hidden="true">☀</span>
+					</button>
+				)
+			}
+			{
+				extraLinks.map((l) => (
+					<a
+						href={l.href}
+						class="cm-header__icon-link"
+						aria-label={l.label}
+						title={l.label}
+					>
+						<span class="cm-sr-only">{l.label}</span>
+						{/* A named slot FIRST, so a consumer can override with its
+						    own artwork. But an extraLink with neither a slot nor
+						    an `icon` string renders an <a> whose ONLY child is the
+						    sr-only label: a zero-width, invisible, unclickable
+						    link that looks exactly like no button at all. The
+						    built-in mark is what makes the link render.
+
+						    `set:html` is REQUIRED. A named slot's fallback content
+						    is escaped as text, so passing the mark that way renders
+						    `&lt;svg ...` as visible markup: the link measured
+						    337x625 of literal angle-bracket text and contained no
+						    SVG at all. */}
+						<Fragment set:html={ICON[l.label.toLowerCase()] ?? ''} />
+						<slot name={`icon-${l.label.toLowerCase()}`} />
+					</a>
+				))
+			}
 		</div>
 	</nav>
 </header>
 
 <!-- The theme toggle is owned by the library runtime (cli-mono.js), which
-     finds `.theme-toggle`, syncs its icon and aria-pressed, persists under
-     this project's key, and migrates the old one. A second hand-rolled copy
-     of that logic is how two toggles end up fighting over one attribute. -->
+     finds `[data-cm-theme-toggle]`, syncs its icon and aria-pressed,
+     persists under this project's key, and migrates the old one. A second
+     hand-rolled copy of that logic is how two toggles end up fighting over
+     one attribute. -->
 
 <style>
-	header {
-		position: sticky;
-		top: 0;
-		z-index: 100;
-		margin: 0;
-		padding: 0 var(--gutter);
-		background: var(--header-bg);
-		backdrop-filter: blur(8px);
-		-webkit-backdrop-filter: blur(8px);
-		border-bottom: 1px solid var(--line);
-	}
-	nav {
-		max-width: var(--maxw);
-		margin: 0 auto;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		height: 60px;
-	}
-	.brand {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		text-decoration: none;
-		color: var(--ink);
-		font-family: var(--font-mono);
-		font-size: 0.95rem;
-	}
-	.brand-prompt { color: var(--ink-faint); }
-	.brand-name { font-weight: 700; color: var(--ink); }
-	.brand:hover .brand-name { color: var(--accent-bright); }
-	.cursor {
-		display: inline-block;
-		width: 0.55em;
-		height: 1em;
-		background: var(--ink);
-		margin-left: 0.1em;
-		animation: blink 1.2s step-end infinite;
-	}
-	@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-	.internal-links { display: flex; align-items: center; }
-	/* The separator is a pseudo-element, not border-left, and the first link
-	   carries no left padding. border-left put a dangling pipe at the page
-	   margin on the first item of every WRAPPED row and pushed the text 0.7rem
-	   off the content rail. This is the corrected form from the oem-ui header. */
-	.internal-links :global(a) {
-		font-family: var(--font-mono);
-		font-size: 0.8rem;
-		color: var(--ink-dim);
-		padding: 0 0.7rem;
-		text-decoration: none;
-		transition: color 0.12s ease;
-		position: relative;
-	}
-	.internal-links :global(a:first-child) { padding-left: 0; }
-	.internal-links :global(a + a)::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 50%;
-		transform: translateY(-50%);
-		height: 1.1em;
-		width: 1px;
-		background: var(--line);
-	}
-	.internal-links :global(a:hover) { color: var(--ink); }
-	.internal-links :global(a.nav-active) {
-		color: var(--ink);
-		font-weight: 700;
-		text-decoration: underline;
-		text-underline-offset: 5px;
-		text-decoration-color: var(--ink-faint);
-	}
-	.controls { display: flex; align-items: center; gap: 0.85rem; }
-	/* Both controls are bare glyphs on the header surface: no box, no border.
-	   An outlined button next to an unoutlined one reads as a mistake. */
-	.theme-toggle {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		color: var(--ink-dim);
-		cursor: pointer;
-		font-size: 0.95rem;
-		transition: color 0.12s ease, background 0.12s ease;
-	}
-	.theme-toggle:hover { color: var(--ink); background: var(--bg-2); }
-	.theme-toggle:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
-	.controls a { display: flex; align-items: center; color: var(--ink-faint); transition: color 0.12s ease; }
-	.controls a:hover { color: var(--ink); }
-
-	/* ============ responsive header ============ */
-	@media (max-width: 640px) {
-		nav {
-			flex-wrap: wrap;
-			height: auto;
-			row-gap: 0.4rem;
-			padding: 0.55rem 0;
-		}
-		.brand { margin-right: auto; }
-		.internal-links {
-			order: 3;
-			width: 100%;
-			border-top: 1px solid var(--line);
-			padding-top: 0.45rem;
-			justify-content: flex-start;
-		}
-		/* The base layer gives every <a> min-height:var(--tap) for the WCAG
-		   2.5.5 tap target. These links carry no vertical padding, so the
-		   text sat at the TOP of that 44px box and all the slack pooled
-		   below it, which read as a lopsided, oddly gappy nav row. Centre
-		   the text in the target box instead: the tap area is unchanged,
-		   the optical spacing is not. */
-		.internal-links :global(a) {
-			padding: 0 0.55rem;
-			display: flex;
-			align-items: center;
-		}
-		.internal-links :global(a:first-child) { padding-left: 0; }
-		.internal-links :global(a + a)::before { content: none; }
-	}
-
-	@media (max-width: 360px) {
-		.internal-links :global(a) { padding: 0 0.5rem; font-size: 0.78rem; }
-		.controls { gap: 0.6rem; }
+	/* Between the stack breakpoint and here, five links plus the brand do not
+	   quite fit on one line and a single link strands on its own row. Tighten
+	   the metrics so they stay together instead of orphaning one. */
+	@media (min-width: 641px) and (max-width: 999px) {
+		.cm-header__link { padding: 0 0.45rem; font-size: 0.76rem; }
+		.cm-header__nav { gap: 0.6rem; }
 	}
 </style>

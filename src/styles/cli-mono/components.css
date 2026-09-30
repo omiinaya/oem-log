@@ -2691,10 +2691,6 @@ button.cm-row:hover { background: var(--bg-2); }
 	   that; it wants the room. The rail's own padding is untouched, so
 	   the column still starts clear of the rail - only the cap and the
 	   centring are released. */
-	.cm-shell--rail--fill {
-		width: auto;
-		max-width: none;
-	}
 	.cm-shell--rail--fill,
 	.cm-shell--rail--fill > * {
 		width: auto;
