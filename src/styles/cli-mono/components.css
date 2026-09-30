@@ -521,6 +521,11 @@ html {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+
+/*
+  The inline row: a FIXED title column and a FIXED excerpt column.
+*/
+.cm-rows--inline .cm-row__title { flex: 0 0 42ch; max-width: 42ch; }
 .cm-row__desc {
 	color: var(--ink-faint);
 	font-size: 0.8rem;
