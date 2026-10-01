@@ -294,12 +294,18 @@ test('the current nav link is decided by the library, not by this project', () =
 	const hl = src('components/HeaderLink.astro');
 	assert.ok(!/nav-active/.test(hl),
 		'HeaderLink.astro still adds the local .nav-active class instead of aria-current');
-	// And the library's component must actually be in use, imported from
-	// the library's own file rather than a stale local fork.
-	const lib = readFileSync('/root/projects/oem-ui/src/astro/HeaderLink.astro', 'utf8');
-	const norm = /const strip = /.test(lib);
-	assert.ok(norm,
-		'cannot read the library HeaderLink; the local copy may have drifted from it');
+	// The component must be a real copy of the library's, not a re-typed
+	// approximation: the normaliser is the whole contract, and a partial
+	// copy of it is how `/blog` stops being current on `/blog/`.
+	//
+	// It is checked HERE, inside this repo, and not by reading the
+	// library's path: a test that reaches outside the repository passes on
+	// this host and fails on every CI runner with EACCES, which is the
+	// one failure a suite that gates a deploy must never have.
+	assert.ok(/const strip = /.test(hl),
+		'the local HeaderLink is missing the strip() normaliser the library owns');
+	assert.ok(/aria-current/.test(hl),
+		'the local HeaderLink never renders aria-current');
 });
 
 test('the site identity comes from one config, not three places', () => {
