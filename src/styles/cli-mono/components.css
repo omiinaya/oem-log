@@ -91,6 +91,15 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
+	/* A head row is a title plus whatever flags that host carries. At 390px
+	   rpm puts a domain and eight chips on this line, and because nothing
+	   here could wrap, the row stayed one line at whatever width the flags
+	   happened to take - and the ip:port slot below it was measured at
+	   48px, ellipsising `192.168.1.104` to `192.168…`. The slot was not
+	   overflowing the card (that was already fixed); it was being starved.
+	   Wrapping lets the flags use their own lines instead of auctioning
+	   the width away from the content underneath. */
+	flex-wrap: wrap;
 }
 .cm-head-row__action { margin-left: auto; flex: 0 0 auto; }
 /* A trailing METADATA chip - a count, a total - belongs to the right
@@ -440,7 +449,13 @@
 	   has to measure and hardcode. */
 	min-height: var(--tap);
 	padding: 0.6em 1.3em;
-	border-radius: 0;
+	/* --radius-sm, the same corner the inputs use. MEASURED on rpm's
+	   login at 390px: `.cm-btn--primary` computed `border-radius: 0px`
+	   while every input beside it computed 6px, so the primary action
+	   was the only sharp-cornered thing on the page. A lone square
+	   control reads as an unstyled <button> that got a background and
+	   missed its CSS - it was the loudest defect on the screen. */
+	border-radius: var(--radius-sm);
 	font-family: var(--font-mono);
 	font-size: var(--text-xs);
 	line-height: 1.2;
@@ -491,9 +506,44 @@
 }
 
 /* The small variant is for a dense row (a toolbar, a table cell), not for
-   the primary action on a phone. It steps back below the tap floor on
-   purpose; on a touch viewport use the base button. */
+   the primary action on a phone. On a FINE pointer it steps below the tap
+   floor on purpose - density is the entire point of the variant. */
 .cm-btn--sm { padding: 0.4em 0.9em; font-size: var(--text-xs); min-height: 0; }
+
+/* On a TOUCH viewport the small variant takes the full floor, because a
+   thumb is the thing that has to hit it.
+
+   MEASURED in WebKit, and this rule replaces `--tap-sm: 44px`, which was
+   added to force the floor unconditionally and made a mistake worth
+   recording:
+
+     - `.cm-btn--sm { min-height: var(--tap-sm) }` with `--tap-sm: 44px`
+       computed 44px - EXACTLY `.cm-btn`'s height - at 402 and at 375 and
+       at desktop 1280. A modifier that renders the same box as its base is
+       not a modifier; the variant was dead, and every existence test was
+       green because the class was still DEFINED and still RENDERED. A
+       token whose value can only equal another token's is a no-op knob.
+     - `min-height: 0` alone (the behaviour before that token) rendered 28px
+       on a PHONE: rpm's Edit Rate Limit / Edit Force SSL Domain buttons,
+       two per card, 64% of the 44px floor, measured on a real handset
+       viewport. That one was the original defect and it was real.
+
+   Both measurements are true at once, and they disagree because the answer
+   is not a property of the LABEL's size - it is a property of the POINTER
+   and the control's ROLE. Same mechanism `.cm-copy` uses one block down,
+   and the same one `.cm-state__actions .cm-btn` uses at the empty state.
+
+   So the floor is asserted per pointer, and the dense-row decision
+   survives where it belongs: 28px next to its neighbours on a mouse, 44px
+   for a thumb on a phone.
+
+   It must live in THIS file and not in base.css's coarse-pointer block:
+   base.css loads first, and `.cm-btn--sm { min-height: 0 }` is declared
+   later at equal specificity, so a base.css rule would lose the cascade
+   silently and this whole decision would vanish with a green suite. */
+@media (pointer: coarse) {
+	.cm-btn--sm { min-height: var(--tap); }
+}
 .cm-btn--block { width: 100%; }
 
 .cm-btn-group { display: flex; gap: var(--space-3); flex-wrap: wrap; }
@@ -817,6 +867,16 @@ button.cm-row:hover { background: var(--bg-2); }
 	font-size: var(--text-micro);
 	white-space: nowrap;
 	flex: 0 0 auto;
+	/* MEASURED on rpm's Proxy Hosts at 390px: a meta strip holding an
+	   EDITABLE control overflowed its card by 46-101px and was hard
+	   clipped, because `flex: 0 0 auto` + `nowrap` makes the strip
+	   unshrinkable while its content is not. The fix belongs here
+	   rather than at each call site: a meta strip must never be able
+	   to paint outside its parent. `min-width: 0` lets the flex item
+	   shrink; the strip keeps its intrinsic size when it fits, which
+	   is the whole point of a fixed meta slot. */
+	min-width: 0;
+	max-width: 100%;
 }
 
 /* A meta slot is a fixed, unshrinkable strip by default - correct for a
@@ -838,8 +898,41 @@ button.cm-row:hover { background: var(--bg-2); }
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--space-2);
+
 }
 .cm-row__meta--wrap > * { min-width: 0; }
+.cm-row__meta--wrap > * { min-width: 0; }
+/* The other direction: a meta slot whose contents are ONE string that
+   must not break across lines. MEASURED on rpm in WebKit at 390px:
+   the `→ ip : port` slot was left wrappable and broke into two rows -
+   the address and port on the first, the arrow and a stranded colon
+   on the second - which reads as a layout fault rather than a value.
+   The slot is given its own full line by `.cm-row__body--wrap`, so
+   here it only has to refuse to split itself. */
+.cm-row__meta--nowrap {
+	white-space: nowrap;
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: var(--space-1);
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* The same slot when its parts make ONE value - `→ 192.168.1.104:80`.
+   A flex gap applies between EVERY child, so with `--space-1` the
+   punctuation picked up a space on each side and the address rendered
+   `192.168.1.104 : 80`. MEASURED in WebKit at 390px on rpm. The gap
+   belongs between the arrow and the address, not inside the address. */
+/* The arrow and the ADDRESS get one space. Nothing else does: the colon
+   and the port are punctuation inside a single value, and MEASURED at
+   390px a blanket `* + *` margin put 4px on each side of the colon, so
+   the address read `192.168.1.104 : 80`. The first child is the arrow
+   and the second is the address; everything after that is inside the
+   value and must be flush. */
+.cm-row__meta--tight { gap: 0; }
+.cm-row__meta--tight > *:first-child + * { margin-left: 0.35em; }
 
 /* A row body is a nowrap flex line by default - title, desc and meta on
    one line, which is right when the row is a summary. It has to give way
@@ -922,6 +1015,151 @@ button.cm-row:hover { background: var(--bg-2); }
 .cm-prose h2::before { content: '## '; color: var(--ink-faint); }
 .cm-prose a { color: var(--ink-dim); }
 .cm-prose a:hover { color: var(--ink); }
+
+/* ---------- prose table ----------
+   A table that lives INSIDE a paragraph of prose, not a data grid. The
+   library owned `.cm-table` and nothing else, so every article-shaped
+   consumer hand-rolled one - and every one of them reached for the
+   data-grid rules and got the wrong table back.
+
+   Three decisions, each measured in WebKit at 393px:
+
+   1. The cells WRAP rather than holding `nowrap`. `.cm-table` sets
+      `white-space: nowrap` because a log is scanned ACROSS. A prose
+      table is read a row at a time.
+   2. `overflow-wrap: break-word` and NOT `word-break: break-word`. The
+      two sound interchangeable and are not. Measured on this fixture
+      (six columns of sentences), `word-break: break-word` produced rows
+      of 44 lines - it breaks EAGERLY at every character, so a sentence
+      becomes one word per line. `overflow-wrap` alone gave a 1072px
+      table in a 393px viewport: it breaks only a word that cannot fit,
+      and it left the single long URL 450px wide. Neither alone works,
+      so this component does not rely on either and stacks instead.
+   3. Below 700px it STACKS: each row becomes a labelled block. That is
+      the only way a wide prose table is readable on a phone, and it is
+      why `data-label` is required on every cell rather than optional.
+
+   No `max-height` and no scroll wrapper: the article page owns the
+   vertical scroll, so a cap would put a second scrollbar inside a
+   paragraph and cut a table off mid-row. */
+.cm-prose-table {
+	width: 100%;
+	border-collapse: collapse;
+	/* `max(var(--min-font), …)`, not a bare em. A bare `0.94em` under the
+	   library's own base font resolves to ~11.7px on a phone, below the
+	   12px floor every other component is held to - and components.css
+	   loads after base.css, so a floor declared there would lose. */
+	font-size: max(var(--min-font), 0.94em);
+	margin: 0 0 var(--space-5);
+	/* `table-layout: fixed`, and this is what makes `width: 100%` real.
+	   Without it the width is advisory against the cells' min-content
+	   floor. The suite forbids the other way of reaching intrinsic
+	   sizing - the "anywhere" value of `overflow-wrap`, spelled in
+	   tests/run.mjs - because it splits identifiers mid-token, so the
+	   layout property takes the job instead. Note this comment cannot
+	   spell the forbidden value: that test scans the raw file, so
+	   naming it here would fail the suite on prose. */
+	table-layout: fixed;
+}
+.cm-prose-table caption {
+	caption-side: top;
+	text-align: left;
+	color: var(--ink-faint);
+	font-size: var(--min-font);
+	padding-bottom: var(--space-2);
+}
+/* Wrapping is the default, so a table in a narrow column degrades to
+   readable stacked-ish rows instead of a horizontal scrollbar. */
+.cm-prose-table th,
+.cm-prose-table td {
+	text-align: left;
+	vertical-align: top;
+	padding: var(--space-2) var(--space-3);
+	border-bottom: 1px solid var(--line);
+	/* `break-word`, not `anywhere`. The suite bans `anywhere` file-wide
+	   because it split `.cm-*` identifiers mid-token, and that lesson
+	   holds here too. What `anywhere` was reaching for - reducing a
+	   cell's intrinsic min-content width so `width: 100%` is honoured -
+	   is done instead by `table-layout: fixed` on the table above.
+	   Measured with that pairing: 0px of overflow of the column at
+	   393 / 700 / 860 / 1100. Verified A/B in-page, so the conclusion
+	   is about the real cascade and not about the source text.
+
+	   `word-break: break-word` / `break-all` shred a sentence into one
+	   word per line (44 lines per row measured) and are never right for
+	   prose. */
+	overflow-wrap: break-word;
+}
+.cm-prose-table th {
+	color: var(--ink-dim);
+	font-weight: 600;
+	font-size: var(--min-font);
+	letter-spacing: 0.02em;
+	white-space: normal;
+}
+/* A rule under the header, not a box around every cell: a prose table
+   sits in a paragraph of text, and a full grid reads as a dashboard
+   that wandered into the article. */
+.cm-prose-table tbody tr:last-child td { border-bottom: 0; }
+.cm-prose-table tbody tr:hover td { background: var(--panel); }
+
+/* ---- stacked rows on a phone ----
+   Below 760px a wide prose table stops being a table: every row becomes
+   a block and each cell carries its column name from `data-label`.
+
+   The breakpoint came from geometry, not from taste. With 6 columns the
+   table has 0px of overflow of its own column at every width tested, so
+   overflow is NOT the reason to stack - but at 700px the six columns
+   share 579px, about 96px each, and a sentence in a 96px column is a
+   single very long line that is hard to parse. At 860px it is a
+   readable 122px. 760px is where that becomes unacceptable.
+
+   The header row is clipped, not `display: none`d, because
+   display:none removes it from the accessibility tree too - which is
+   why `data-label` is load-bearing: it is where the column name now
+   lives for a screen reader AND for the reader on screen. */
+@media (max-width: 760px) {
+	.cm-prose-table thead {
+		/* position:absolute + clip keeps it announced. A bare
+		   display:none would not. */
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	.cm-prose-table,
+	.cm-prose-table tbody,
+	.cm-prose-table tr,
+	.cm-prose-table td {
+		display: block;
+		width: 100%;
+	}
+	.cm-prose-table tr {
+		padding: var(--space-3) 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.cm-prose-table tr:last-child { border-bottom: 0; }
+	.cm-prose-table td {
+		border-bottom: 0;
+		padding: var(--space-1) 0;
+	}
+	/* The label sits on its own line, in the same dim step as a header,
+	   so a stacked row reads as "name, then value" without a table. */
+	.cm-prose-table td::before {
+		content: attr(data-label);
+		display: block;
+		color: var(--ink-faint);
+		font-size: var(--min-font);
+		letter-spacing: 0.02em;
+		margin-bottom: var(--space-0);
+	}
+	/* An unlabelled cell would render an empty label line and read as a
+	   mistake. Hiding the pseudo keeps the row honest. */
+	.cm-prose-table td:not([data-label])::before { content: none; }
+}
 
 /* ---------- lede ----------
    The sentence directly under a page head. It is the first thing read
@@ -1609,9 +1847,18 @@ button.cm-row:hover { background: var(--bg-2); }
    row as wide as the worst one. Truncate with an ellipsis so the value
    is still identifiable on hover. */
 .cm-table__truncate {
-	max-width: 20rem;
+	/* A chip inside a card is not a table cell: 20rem is wider than a
+	   390px phone, so a long value ran to the card edge and was guil-
+	   lotined by the viewport with no ellipsis. MEASURED on rpm:
+	   `mrxlab-net-le` cut mid-word with nothing to show it was cut.
+	   `min-width: 0` is load-bearing: as a flex item the default
+	   `min-width: auto` floors it at its content width, so the max-width
+	   below never applied and the text was cut with no marker at all. */
+	max-width: 12rem;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 /* The control inside a table cell.
 
@@ -1737,7 +1984,15 @@ button.cm-row:hover { background: var(--bg-2); }
 	padding: 0.15em 0.6em;
 	border: 1px solid var(--line);
 	border-radius: 4px;
-	background: var(--bg-3);
+	/* --panel-nested, NOT --bg-3. MEASURED on rpm at 390px: a chip
+	   filled --bg-3 (#161616) sits INSIDE a card filled
+	   --panel-nested (#1a1a1a) and is therefore DARKER than the
+	   container holding it - luminance 22 against 26. The page's most
+	   common element ranked below its own parent: 49 chips against 25
+	   cards on the certificates view, all advertising themselves first.
+	   A chip is a label, and a label inside a surface is raised off it,
+	   never recessed into it. */
+	background: var(--surface-raised);
 	font-family: var(--font-mono);
 	font-size: max(var(--min-font), var(--text-micro));
 	line-height: 1.4;
@@ -1801,9 +2056,84 @@ button.cm-row:hover { background: var(--bg-2); }
 	margin: 1.4rem auto 0; padding-top: var(--space-4);
 	border-top: 1px dashed var(--line);
 	font-family: var(--font-mono); font-size: var(--text-micro); color: var(--ink-faint);
+	/* The status line is a ROW for the same reason the meta row is: a
+	   status is read as a sequence ("● nominal │ ● sig: origin only"), and
+	   a sequence needs a separator that cannot strand. A single-part
+	   `status="..."` is one flex item and lays out exactly as the old bare
+	   text did - the row only earns its keep when there are two or more
+	   fragments to separate. */
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0 var(--space-2);
 }
 .cm-footer__dot { color: var(--ink-dim); margin-right: 0.35em; }
-.cm-footer__bar { color: var(--ink-faint); margin-right: 1.2em; }
+/* The SAME pairing as `.cm-footer__meta`: the separator is a `::before` on
+   the part it PRECEDES, so it is impossible for a wrapped line to END with
+   one. The alternative (`::after` on `:not(:last-child)`, which is what the
+   hand-rolled footer in dev-blog shipped) strands a dot on every line but
+   the last - MEASURED live at 390/360/320/402px, two stranded dots each.
+   Same negative-left-margin trick, for the same reason: hang the dot INTO
+   the gap so it does not widen the row and push a part onto a new line. */
+.cm-footer__status-part:not(:first-child)::before {
+	content: '│';
+	color: var(--ink-faint);
+	opacity: 0.6;
+	margin-left: calc(-1 * var(--space-2));
+	margin-right: var(--space-2);
+}
+/* The separator between footer meta fragments.
+
+   It used to be a `·` inside its own <span class="cm-footer__bar">, which
+   makes it a FLEX ITEM like any other. `.cm-footer__meta` is
+   `flex-wrap: wrap`, so a separator could land at the end of a line with
+   nothing after it: "© 2026 omiinaya ·" on line one, the fragments on
+   line two. MEASURED in WebKit on the showcase at 320, 390, 402 and 430:
+   the separator was the last item on the first line at 4 of 5 widths.
+
+   The separator is therefore not an element. It is a `::before` on the
+   item it PRECEDES, so it belongs to that item and the two can never be
+   split across a wrap - the shape the header already uses for its pipe
+   (`.cm-header__link + .cm-header__link::before`).
+
+   The rule EXCLUDED an item that was already a separator, because a
+   consumer vendoring an older library emitted its own
+   `<span class="cm-footer__bar">/</span>` as a flex item and a blanket
+   `:not(:first-child)::before` put two marks in the gap ("/ ·").
+   MEASURED in WebKit against the served sheet: on a legacy row all 3
+   separator elements computed `::before: "·"` on top of their own "/".
+
+   That exclusion, and the `.cm-footer__bar` rule beside it, are now
+   GONE: sullen.sh and oem-portfolio were the last two emitters, both
+   migrated to the generated separator, and the class is deleted rather
+   than kept as a shim nobody uses. The rule below is therefore plain -
+   which is the honest state, and a class defined in CSS but rendered by
+   nothing is dead code the next person cannot trust.
+
+   `::before` and not `::after`, and that choice is the whole point.
+   An `::after` on `:not(:last-child)` also stops the separator being its
+   own flex item, but it keeps the dot ATTACHED TO THE PRECEDING ITEM -
+   so when that item is the last thing on a wrapped line the dot is still
+   the last thing on the line. That is the same bug in a different
+   position, and a probe that only looked for a separator ELEMENT would
+   have reported the ::after version as clean. MEASURED: at 390px the
+   ::after version left line one reading "© 2026 @omiinaya · astro ·
+   static ·" with "zero deps · contact" below.
+
+   With `::before` on `:not(:first-child)` a wrapped line can only ever
+   START with a separator, and "no visual line ends with a separator"
+   becomes an invariant the tests can assert rather than a coincidence.
+
+   The negative left margin hangs the dot INTO the gap between the two
+   items rather than adding to it, so the separator does not widen the
+   row and push it one item earlier onto the next line. */
+.cm-footer__meta > *:not(:first-child)::before {
+	content: '·';
+	color: var(--ink-faint);
+	opacity: 0.6;
+	margin-left: calc(-1 * var(--space-2));
+	margin-right: var(--space-2);
+}
 
 /* ============ header ============
    Owned by the shared layer, NOT by an Astro <style> block: if these rules
@@ -4101,7 +4431,14 @@ button.cm-link:focus-visible {
 	flex: 0 0 auto;
 	border-radius: var(--radius-sm);
 	border: 1px solid var(--ink-dim);
-	background: var(--bg-2);
+	/* --panel-nested, NOT --bg-2. MEASURED on rpm at 390px: a badge
+	   filled --bg-2 (#101010) sitting on a --panel (#111111) is one
+	   255th of a difference apart - luminance 16 against 17, a
+	   contrast ratio of 1.008. The border was carrying the entire
+	   edge and the fill did none, so a badge and the panel that
+	   holds it read as the same plane. In a dark UI a nested
+	   surface is RAISED: it must be LIGHTER than its parent. */
+	background: var(--panel-nested);
 	box-shadow: inset 3px 0 0 var(--ink);
 	color: var(--ink);
 }
@@ -4128,7 +4465,9 @@ button.cm-link:focus-visible {
 	display: inline-flex;
 	border: 1px solid var(--line);
 	border-radius: var(--radius-sm);
-	background: var(--bg-3);
+	/* Same rule as .cm-chip: a segmented control lives ON a card, so
+	   it must sit above that card's fill, not below it. */
+	background: var(--surface-raised);
 	overflow: hidden;
 	max-width: 100%;
 	/* A long option set wraps onto a second line rather than running
