@@ -1,0 +1,204 @@
+---
+/**
+ * oem-ui <Header> — sticky top nav with brand, nav links, theme toggle.
+ * Copy this file into your project as-is. All site data comes from props.
+ */
+import { SITE } from './config';
+
+/**
+ * Built-in marks for the well-known icon links a header carries.
+ *
+ * These live in the LIBRARY rather than in each consumer because the
+ * absence is invisible until someone notices the button is missing: a
+ * consumer that renders `<Header extraLinks={[github]} />` gets a
+ * correct, focusable link and no pixels, and the only symptom is a
+ * zero-width box in the header. Shipping the mark with the link makes
+ * the two impossible to separate.
+ *
+ * 16x16, currentColor, `fill` -- so the mark inherits the header's ink
+ * and its hover state with no per-consumer CSS.
+ */
+const ICON: Record<string, string> = {
+	github:
+		'<svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18">' +
+		'<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>' +
+		'</svg>',
+};
+
+interface Link {
+	href: string;
+	label: string;
+	/**
+	 * Marks this link as the page you are on. Renders `aria-current="page"`,
+	 * which `.cm-header__link[aria-current='page']` already styles. Every
+	 * multi-page site needs this, and without the prop the one rule the
+	 * library ships for it is unreachable.
+	 */
+	active?: boolean;
+	/**
+	 * The id of the section this link points at. Hands the link to the
+	 * runtime's scroll-spy, which marks it `is-active` as the reader moves
+	 * down the page. For an in-page link (`#section`) this is inferred from
+	 * the href, so single-page sites get the spy with no extra wiring.
+	 */
+	spy?: string;
+}
+
+interface Props {
+	links?: Link[];
+	brand?: string;
+	homeHref?: string;
+	showThemeToggle?: boolean;
+	extraLinks?: Link[]; // rendered right of the theme toggle (e.g. GitHub)
+	/**
+	 * Renders the nav as a fixed rail down the leading edge above 1000px,
+	 * instead of a horizontal bar. Opt-in, because it is a layout decision
+	 * a site has to make, not a default: a five-link marketing header looks
+	 * wrong as a rail, and a documentation header with twenty sections
+	 * cannot live in a bar. Below 1000px nothing changes - it is still a
+	 * bar behind the burger, so `rail` costs a small screen nothing.
+	 *
+	 * Pair it with `<div class="cm-shell cm-shell--rail">` around the page
+	 * content, or set `rail` on the shell yourself, so the content clears
+	 * the rail. The class is `cm-header--rail`; nothing else is implied.
+	 */
+	rail?: boolean;
+}
+
+const {
+	links = [],
+	brand = SITE.title,
+	homeHref = '/',
+	showThemeToggle = true,
+	extraLinks = [],
+	rail = false,
+} = Astro.props;
+
+/* A link can be current in two ways, and conflating them is a real bug.
+   `active` is a statement about WHERE YOU ARE (one link, the current page);
+   the scroll-spy's `is-active` is about WHAT YOU ARE READING as you scroll.
+   On a single-page site both are true of the same link at the same time, so
+   they must be separate attributes, or the spy would overwrite the current
+   page's state on the first scroll event.
+
+   The spy id is inferred from an in-page href so the showcase - whose links
+   are all `#section` - gets the spy without every link spelling it out. */
+const navLinks = links.map((l) => ({
+	...l,
+	spyId: l.spy ?? (l.href.startsWith('#') ? l.href.slice(1) : undefined),
+}));
+const anySpy = navLinks.some((l) => l.spyId);
+
+// NOT emitted here. A guard in <header> lives in <body> and runs AFTER the
+// stylesheets have painted, which is the flash it exists to prevent. The
+// snippet belongs in <head>, before the first stylesheet - see the
+// `Head.astro` component, which owns that position. Emitting it from both
+// places would also double-write the attribute.
+---
+
+<header class:list={['cm-header', rail && 'cm-header--rail']} data-cm-header>
+	<nav class="cm-header__nav">
+		{/* First in the row and first in the tab order: a menu button that
+		    leads the header is what a thumb expects. It lives OUTSIDE
+		    .cm-header__controls on purpose - that wrapper is its own flex
+		    row, so `order` inside it could never move the burger past the
+		    brand. Only rendered when there is a nav to disclose, and hidden
+		    by CSS unless the runtime has set `.cm-js` on <html>, so a no-JS
+		    reader keeps the full nav. */}
+		{
+			links.length > 0 && (
+				<button
+					class="cm-icon-btn cm-nav-toggle"
+					type="button"
+					data-cm-nav-toggle
+					aria-expanded="false"
+					aria-controls="cm-header-links"
+					aria-label="Menu"
+					title="Menu"
+				>
+					<span class="cm-nav-toggle__bars" aria-hidden="true">
+						<span class="cm-nav-toggle__bar" />
+					</span>
+				</button>
+			)
+		}
+
+		<a href={homeHref} class="cm-header__brand" aria-label="Home">
+			<span class="cm-header__prompt" aria-hidden="true">$</span>
+			<span class="cm-header__name">{brand}</span>
+			<span class="cm-cursor" aria-hidden="true"></span>
+		</a>
+
+		{
+			links.length > 0 && (
+				<div class="cm-header__links" id="cm-header-links" data-cm-nav={anySpy ? true : undefined}>
+					{navLinks.map((l) => (
+						<a
+							href={l.href}
+							class="cm-header__link"
+							aria-current={l.active ? 'page' : undefined}
+							data-cm-spy={l.spyId}
+						>
+							{l.label}
+						</a>
+					))}
+				</div>
+			)
+		}
+
+		<div class="cm-header__controls">
+			{
+				showThemeToggle && (
+					<button
+						class="cm-icon-btn"
+						type="button"
+						data-cm-theme-toggle
+						aria-label="Toggle theme"
+						title="Toggle theme"
+					>
+						<span data-cm-theme-icon aria-hidden="true">☀</span>
+					</button>
+				)
+			}
+			{
+				extraLinks.map((l) => (
+					<a
+						href={l.href}
+						class="cm-header__icon-link"
+						aria-label={l.label}
+						title={l.label}
+					>
+						<span class="cm-sr-only">{l.label}</span>
+						{/* A named slot FIRST, so a consumer can override
+						    with its own artwork. But an extraLink with
+						    neither a slot nor an `icon` string rendered an
+						    <a> whose ONLY child was the sr-only label: a
+						    zero-width, invisible, unclickable link that
+						    looked exactly like no button at all. Measured
+						    at 1280 and 402: present, correct href, width 0.
+						    The built-in marks below are what make the link
+						    render; pass `icon` or the slot to replace one. */}
+						{/* `set:html` is REQUIRED here. A named slot's fallback
+						    content is escaped as text, so passing the mark that
+						    way renders `&lt;svg ...` as visible markup: the link
+						    measured 337x625 of literal angle-bracket text and
+						    contained no SVG at all. */}
+						<Fragment set:html={ICON[l.label.toLowerCase()] ?? ''} />
+						<slot name={`icon-${l.label.toLowerCase()}`} />
+						<Fragment set:html={l.icon} />
+					</a>
+				))
+			}
+		</div>
+	</nav>
+</header>
+
+<style>
+	/* Between the stack breakpoint and here, five links plus the brand do not
+	   quite fit on one line and a single link strands on its own row. Tighten
+	   the metrics so they stay together instead of orphaning one. */
+	@media (min-width: 641px) and (max-width: 999px) {
+		.cm-header__link { padding: 0 0.45rem; font-size: 0.76rem; }
+		.cm-header__nav { gap: 0.6rem; }
+	}
+</style>

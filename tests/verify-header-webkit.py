@@ -269,6 +269,34 @@ async def main():
                   "aria-expanded=" + str(opened.get("expanded")))
             check(opened.get("visible"), "the drawer is actually visible",
                   "%sx%s" % (opened.get("w"), opened.get("h")))
+
+            # The scrim, asserted because a vision model reported the live
+            # drawer's background as "still live, no dim overlay" and it
+            # was wrong: the scrim exists, is rgba(0,0,0,0.55) at full
+            # opacity with pointer-events:auto, and is simply
+            # imperceptible over near-black content at that contrast. A
+            # claim about a scrim is a claim about GEOMETRY AND STATE, so
+            # it is measured, not eyeballed.
+            scrim = await page.evaluate(r"""() => {
+                const s = document.querySelector('[data-cm-nav-scrim]');
+                if (!s) return null;
+                const cs = getComputedStyle(s);
+                const r = s.getBoundingClientRect();
+                return { bg: cs.backgroundColor, opacity: cs.opacity,
+                         pe: cs.pointerEvents, z: cs.zIndex,
+                         coversViewport: Math.round(r.width) >= window.innerWidth
+                                         && Math.round(r.height) >= window.innerHeight };
+            }""")
+            check(scrim is not None, "the runtime created a scrim for the drawer")
+            if scrim:
+                check(float(scrim["opacity"]) > 0.9, "the scrim is opaque while the drawer is open",
+                      "opacity=%s" % scrim["opacity"])
+                check(scrim["pe"] != "none", "the scrim swallows taps behind the drawer",
+                      "pointer-events=%s" % scrim["pe"])
+                check(scrim["coversViewport"], "the scrim covers the viewport")
+                check("rgba(0" in scrim["bg"] or scrim["bg"].startswith("rgb(0"),
+                      "the scrim is a dark wash, not a colour that hides nothing",
+                      "background=%s" % scrim["bg"])
             # And the header must still be pinned WITH it open - the
             # regression this library's drawer shipped once.
             #

@@ -320,6 +320,21 @@ test('the site identity comes from one config, not three places', () => {
 	const markup = hdr.replace(/<!--[\s\S]*?-->/g, '').replace(/<style>[\s\S]*?<\/style>/g, '');
 	assert.ok(!/https:\/\/github\.com\/[a-z]/i.test(markup),
 		'Header.astro hardcodes a github.com URL in its markup; that is what SITE.github is for');
+
+	// And none in the CALL either. Scanning only the component passed with
+	// the literal sitting in a page, because the page is where the header
+	// is actually invoked: `<Header extraLinks={[{ href: 'https://…',
+	// label: 'github' }]} />` is the same second source of truth, one file
+	// over. Every entry point is a place it can hide, so every entry point
+	// is scanned.
+	for (const f of astroFiles()) {
+		const body = readFileSync(f, 'utf8')
+			.replace(/<style>[\s\S]*?<\/style>/g, '')
+			.replace(/<!--[\s\S]*?-->/g, '');
+		for (const m of body.matchAll(/https:\/\/github\.com\/[a-z][^\s'"`)]*/gi)) {
+			assert.fail(`${f.replace(root, '')} hardcodes the repo URL ${m[0]}; read SITE.github`);
+		}
+	}
 });
 
 test('every entry point declares the project theme key and the runtime', () => {
