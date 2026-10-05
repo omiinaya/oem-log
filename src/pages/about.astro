@@ -23,7 +23,7 @@ import { SITE } from '../components/config';
 	</head>
 	<body>
 		<Header extraLinks={[{ href: SITE.github, label: 'github' }]} />
-		<main class="about-main">
+		<main class="cm-stack cm-stack--section">
 			<section class="about-head">
 				<p class="cm-kicker">about</p>
 				<h1>This blog</h1>
@@ -58,7 +58,7 @@ import { SITE } from '../components/config';
 
 <style>
 	.about-head { padding: var(--head-top) 0 2rem; }
-	.about-head .cm-kicker { margin-bottom: 0.8rem; }
+	/* `.cm-kicker` already owns its gap in the library. */
 	.about-head h1 { font-size: var(--head-h1); margin: 0; letter-spacing: -0.01em; }
 
 	.about-body {
@@ -73,7 +73,12 @@ import { SITE } from '../components/config';
 	.about-body ul { margin-bottom: 1.4rem; }
 	.about-body ul:last-child { margin-bottom: 0.4rem; }
 
-	.about-links { display: flex; flex-wrap: wrap; gap: 1.4rem; margin-top: 1.8rem; }
+	/* No margin-top: `<main>` is a `cm-stack cm-stack--section`, so the
+	   library's gap separates this from the body above it. A margin here
+	   would stack on that gap, which measured 28.8px against a 24px
+	   rhythm — and with the head section contributing 0px, /about was
+	   spacing its three blocks three different ways. */
+	.about-links { display: flex; flex-wrap: wrap; gap: 1.4rem; }
 	.about-links a {
 		font-family: var(--font-mono);
 		font-size: 0.86rem;
