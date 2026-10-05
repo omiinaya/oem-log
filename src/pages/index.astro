@@ -30,7 +30,14 @@ const latest = posts.slice(0, 4);
 	</head>
 	<body>
 		<Header extraLinks={[{ href: SITE.github, label: 'github' }]} />
-		<main>
+		<!-- The vertical rhythm: `.cm-stack` owns the space BETWEEN the
+		     blocks on this page. Measured before: the head block sat
+		     flush against the content below it at exactly 0.0px, because
+		     `.cm-head` set no bottom margin and nothing else owned the
+		     gap - so every project invented its own number and none of
+		     them matched. Override `--stack-section` once on :root to
+		     retune every gap on the site at once. -->
+		<main class="cm-stack cm-stack--section">
 			<!--
 				Every block below is a library component. This page used to
 				maintain a second implementation of all of them - `.hero`,
