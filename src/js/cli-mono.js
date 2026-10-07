@@ -946,6 +946,179 @@
 		});
 	}
 
+	/* ---------- dropdown anchoring ----------
+	   `.cm-dropdown__menu` is a `[popover]`, and a top-layer element's
+	   containing block is the INITIAL CONTAINING BLOCK - never its
+	   `.cm-dropdown` parent. The rule's own `position: absolute; right: 0;
+	   top: calc(100% + 4px)` is therefore resolved against the document
+	   origin, and the UA's popover default (`inset: 0; margin: auto;
+	   width: fit-content`, measured in WebKit 26.6) leaves `left: 0` in
+	   place, so the horizontal pair is over-constrained and `right` is the
+	   half that loses.
+
+	   MEASURED on this repo's own showcase, in WebKit, with the runtime's
+	   inline styles cleared (so this is CSS alone): the "row actions"
+	   trigger sat at document (40, 25576) at 390x844 and (356, 19116) at
+	   1280x900, while its open menu rendered at document (0, 848) and
+	   (0, 904) - the left edge of the page, one viewport height below its
+	   top. `getComputedStyle(menu).top` reads exactly `848px` on an
+	   844px viewport: the ICB's own height plus the 4px gap, which is how
+	   you can tell the containing block is the viewport rather than
+	   `.cm-dropdown`. Scrolled to the trigger - where the reader always
+	   IS - the menu sits 24,286px ABOVE the viewport, i.e. not on screen
+	   at all. Not near the button in ANY engine, and not a WebKit quirk:
+	   CSS has no selector that knows where the trigger is, so the runtime
+	   anchors it instead.
+
+	   Two consequences that shaped the implementation:
+	   - A per-element binding is wrong here. `init()` binds once, but a
+	     consumer that re-renders its rows (the hearth console rewrites its
+	     <tbody> every 5s) replaces the menu nodes, and a dataset flag dies
+	     with them. `toggle` does not bubble but it DOES pass through the
+	     capture phase, so one listener on `document` outlives every node. */
+	var POP_SEL = '.cm-dropdown__menu[popover]';
+	var popPin = null;
+
+	function anchorPopover(menu) {
+		var id = menu.id || '';
+		// [popovertarget] is a plain attribute selector: valid whether or
+		// not the engine implements the popover API.
+		var trigger = id ? document.querySelector('[popovertarget="' + id.replace(/["\\]/g, '\\$&') + '"]') : null;
+		if (!trigger) return;
+		var t = trigger.getBoundingClientRect();
+		menu.style.position = 'fixed';
+		menu.style.inset = 'auto';
+		var w = menu.offsetWidth;
+		var h = menu.offsetHeight;
+		var pad = 8;
+		var x = t.right - w;                      // right edges align, as the CSS wanted
+		if (x < pad) x = pad;
+		else if (x + w > window.innerWidth - pad) x = window.innerWidth - w - pad;
+		var y = t.bottom + 4;                     // `calc(100% + var(--space-1))`, translated
+		if (y + h > window.innerHeight - pad && t.top - h - 4 >= pad) y = t.top - h - 4;
+		if (y < pad) y = pad;
+		menu.style.left = Math.round(x) + 'px';
+		menu.style.top = Math.round(y) + 'px';
+	}
+
+	/* Fixed positioning does not follow the page, so while a menu is open
+	   the trigger moves under it on every scroll. Pin, then unpin on close
+	   - one pair of listeners, not one per menu. */
+	function unpinPopover() {
+		if (!popPin) return;
+		window.removeEventListener('scroll', popPin);
+		window.removeEventListener('resize', popPin);
+		popPin = null;
+	}
+
+	function pinPopover(menu) {
+		unpinPopover();
+		popPin = function () { anchorPopover(menu); };
+		window.addEventListener('scroll', popPin, { passive: true });
+		window.addEventListener('resize', popPin);
+		anchorPopover(menu);
+	}
+
+	/* An item is reachable unless it says it is not. aria-disabled items stay
+	   in the DOM (so a reader hears them) but the arrow keys step over them. */
+	function menuItems(menu) {
+		return Array.prototype.filter.call(
+			menu.querySelectorAll('[role="menuitem"], .cm-dropdown__item'),
+			function (el) {
+				return el.getAttribute('aria-disabled') !== 'true' && !el.disabled;
+			}
+		);
+	}
+
+	function onPopoverToggle(e) {
+		var menu = e.target;
+		if (!menu || typeof menu.matches !== 'function' || !menu.matches(POP_SEL)) return;
+		if (menu.matches(':popover-open')) {
+			pinPopover(menu);
+			// The menu-button pattern: opening moves focus INTO the menu, so
+			// the arrow keys have somewhere to start. Closing returns focus to
+			// the trigger - the popover API already does that half.
+			var first = menuItems(menu)[0];
+			if (first && typeof first.focus === 'function') first.focus();
+		} else unpinPopover();
+	}
+
+	/* Arrow keys inside an open menu: Down/Up step and wrap, Home/End jump.
+	   Escape is the platform's (light dismiss), so it is not handled here. */
+	function onMenuKey(e) {
+		var t = e.target;
+		if (!t || typeof t.closest !== 'function') return;
+		var menu = t.closest(POP_SEL);
+		if (!menu) return;
+		var items = menuItems(menu);
+		if (!items.length) return;
+		var i = items.indexOf(t);
+		var next = null;
+		if (e.key === 'ArrowDown') next = items[(i + 1) % items.length];
+		else if (e.key === 'ArrowUp') next = items[(i - 1 + items.length) % items.length];
+		else if (e.key === 'Home') next = items[0];
+		else if (e.key === 'End') next = items[items.length - 1];
+		if (!next) return;
+		e.preventDefault();
+		next.focus();
+	}
+
+	/* ---------- toggle group ----------
+	   OPT-IN via [data-cm-seg], because a consumer that already owns
+	   aria-pressed in its framework state must not have the runtime
+	   writing the same attribute behind it.
+	     data-cm-seg="single"  one option pressed at a time (pressing the
+	                           pressed one keeps it - a radio, not a toggle)
+	     data-cm-seg="multi"   each option toggles itself
+	   Emits `cm-seg-change` on the group with the pressed labels. */
+	function onSegClick(e) {
+		var t = e.target;
+		if (!t || typeof t.closest !== 'function') return;
+		var opt = t.closest('.cm-seg__opt');
+		if (!opt) return;
+		var group = opt.closest('[data-cm-seg]');
+		if (!group) return;
+		if (opt.disabled || opt.getAttribute('aria-disabled') === 'true') return;
+		var mode = group.getAttribute('data-cm-seg');
+		var opts = group.querySelectorAll('.cm-seg__opt');
+		if (mode === 'multi') {
+			opt.setAttribute('aria-pressed', opt.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+		} else if (mode === 'single') {
+			Array.prototype.forEach.call(opts, function (o) {
+				o.setAttribute('aria-pressed', o === opt ? 'true' : 'false');
+			});
+		} else return;
+		var values = Array.prototype.filter.call(opts, function (o) {
+			return o.getAttribute('aria-pressed') === 'true';
+		}).map(function (o) {
+			return o.getAttribute('data-value') || o.textContent.trim();
+		});
+		if (typeof CustomEvent === 'function') {
+			group.dispatchEvent(new CustomEvent('cm-seg-change', { bubbles: true, detail: { values: values } }));
+		}
+	}
+
+	/* ---------- search clear ----------
+	   Empties the field through the NATIVE value setter, then fires a
+	   bubbling `input`. A plain `input.value = ''` is invisible to React,
+	   which tracks the value on its own wrapper; going through the
+	   prototype setter is what makes a controlled input notice. */
+	function onSearchClear(e) {
+		var t = e.target;
+		if (!t || typeof t.closest !== 'function') return;
+		var btn = t.closest('.cm-search__clear');
+		if (!btn) return;
+		var box = btn.closest('.cm-search');
+		var input = box && box.querySelector('.cm-search__input');
+		if (!input) return;
+		var proto = Object.getPrototypeOf(input);
+		var desc = proto && Object.getOwnPropertyDescriptor(proto, 'value');
+		if (desc && desc.set) desc.set.call(input, '');
+		else input.value = '';
+		input.dispatchEvent(new Event('input', { bubbles: true }));
+		if (typeof input.focus === 'function') input.focus();
+	}
+
 	/* ---------- init ---------- */
 	function init(root) {
 		(root || document)
@@ -1056,5 +1229,12 @@
 		document.addEventListener('astro:page-load', function () {
 			init(document);
 		});
+		// Capture, at the root, registered once: see onPopoverToggle.
+		document.addEventListener('toggle', onPopoverToggle, true);
+		// Delegated at the root for the same reason: re-rendered markup
+		// keeps working without a re-bind.
+		document.addEventListener('keydown', onMenuKey);
+		document.addEventListener('click', onSegClick);
+		document.addEventListener('click', onSearchClear);
 	}
 })();
