@@ -2605,7 +2605,7 @@ button.cm-row:hover { background: var(--bg-2); }
 .cm-header {
 	position: sticky;
 	top: 0;
-	z-index: 100;
+	z-index: var(--z-header);
 	margin: 0;
 	padding: 0 var(--gutter);
 	background: var(--header-bg);
@@ -2919,7 +2919,7 @@ button.cm-row:hover { background: var(--bg-2); }
 	position: fixed;
 	inset: 0;
 	background: rgb(0 0 0 / 0.55);
-	z-index: 98;
+	z-index: var(--z-scrim);
 	opacity: 0;
 	pointer-events: none;
 	transition: opacity var(--cm-t) var(--cm-ease);
@@ -2975,7 +2975,7 @@ button.cm-row:hover { background: var(--bg-2); }
 		background: var(--bg);
 		border-top: 0;
 		border-right: 1px solid var(--line);
-		z-index: 99;
+		z-index: var(--z-drawer);
 		/* A drawer that SNAPS into place is motion the reader did not
 		   ask for; a short fade keeps the direction legible. */
 		animation: cm-drawer-in var(--cm-t) var(--cm-ease);
