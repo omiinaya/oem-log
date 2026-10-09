@@ -34,7 +34,16 @@ PAGES = [
     ("/", "home"),
     ("/blog/", "notes"),
     ("/about/", "about"),
-    ("/blog/", "notes"),
+    # A CHILD of the notes section, on purpose. `/blog/` is the exact
+    # match, so it passes with the segment opt-in deleted: the notes
+    # link stops being current exactly one level down, and that level
+    # is where every post lives. Without this entry the whole
+    # `matchSegment` claim - the behaviour the old fork existed to
+    # reach, inlined as `matchSegment={l.label === 'notes' || ...}` -
+    # had no fixture that could fail. Measured 2026-10-09: with
+    # `matchSegment: false` in the wrapper this page reports ZERO
+    # aria-current links.
+    ("/blog/building-a-self-healing-watchdog/", "notes"),
 ]
 
 failures = []
@@ -81,6 +90,7 @@ PROBE = r"""() => {
       w: Math.round(a.getBoundingClientRect().width),
       weight: getComputedStyle(a).fontWeight,
       deco: getComputedStyle(a).textDecorationLine,
+      color: getComputedStyle(a).color,
     })),
     navLinkCount: navlinks.length,
     // A WRAPPED header is a second row of children at a different top.
@@ -189,8 +199,13 @@ async def main():
                 if a["w"] > 0 and a["h"] > 0:
                     check(a["weight"] == "700", path + ": the current link is bold",
                           "font-weight=" + a["weight"])
-                    check("underline" in a["deco"], path + ": the current link is underlined",
-                          "text-decoration=" + a["deco"])
+                    # Weight plus the colour step - see the desktop pass
+                    # below for why this is not an underline any more.
+                    sib = [x["color"] for x in d["anchors"]
+                           if x["isNavLink"] and x["cur"] != "page"]
+                    check(a["color"] not in sib,
+                          path + ": the current link is a different colour from its siblings",
+                          "colour=%s" % a["color"])
                 else:
                     print("  skip %s: the current link is inside the closed drawer "
                           "(0x0); its appearance is asserted at desktop width" % path)
@@ -217,8 +232,24 @@ async def main():
                       "%dx%d" % (a["w"], a["h"]))
                 check(a["weight"] == "700", path + "@1280: the current link is bold",
                       "font-weight=" + a["weight"])
-                check("underline" in a["deco"], path + "@1280: the current link is underlined",
-                      "text-decoration=" + a["deco"])
+                # The marker is weight PLUS a colour step, not an underline.
+                # This assertion used to demand `text-decoration: underline`
+                # and had been RED since before 2026-10-09 - MEASURED against
+                # the PRE-migration build: the then-vendored components.css
+                # already carried `text-decoration: none` on this exact rule,
+                # so the harness was asserting a style the library had
+                # deliberately retired, and nobody had run it since. The
+                # library's own comment gives the reason: the underline rule
+                # sat at equal specificity to the UA's anchor styling and
+                # drew nothing, and a real one would underline the separator
+                # between items as well as the item. What a reader sees is
+                # the weight plus the colour step, so THAT is asserted.
+                siblings = [x["color"] for x in d["anchors"]
+                            if x["isNavLink"] and x["cur"] != "page"]
+                check(a["color"] not in siblings,
+                      path + "@1280: the current link is a different colour from its siblings",
+                      "colour=%s, shared with %d sibling(s)"
+                      % (a["color"], siblings.count(a["color"])))
         await dctx.close()
 
         # ---------- the drawer: the header's own runtime capability ----------

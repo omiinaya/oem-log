@@ -1,209 +1,67 @@
 ---
 /**
- * oem-ui <Header> — the library's sticky top nav.
+ * oem/log <Header> — a THIN WRAPPER over the library's header.
  *
- * Copied verbatim from /root/projects/oem-ui/src/astro/Header.astro on
- * 2026-09-30. Before this, the blog carried 170 lines of scoped CSS in
- * this file: its own sticky bar, brand, pipe-separated nav, theme
- * toggle, GitHub link, and three breakpoint blocks.
+ * This file used to be a fork: a verbatim copy of
+ * `oem-ui/src/astro/Header.astro` from 2026-09-30 that then drifted as the
+ * library moved on. Measured 2026-10-09: 241 diff lines, and the fork's
+ * only real content was
  *
- * Two things that were WRONG here, both measured in WebKit at 390x844,
- * and both fixed by adopting the library's surface instead of copying it:
+ *   matchSegment={l.label === 'notes' || l.href === `${base}blog/`}
  *
- *   1. The header was 121px tall on a phone - two rows. The hand-rolled
- *      nav wrapped below the brand because it was a plain flex row with
- *      its own metrics, and nothing stopped the wrap. The library's
- *      header is one row with a burger, so the nav is a disclosure
- *      instead of a wall.
- *   2. The theme toggle measured 32x44 - a pill. base.css gives every
- *      button min-height: var(--tap) on a coarse pointer, and the
- *      hand-rolled toggle declared only width and height, so the floor
- *      stretched a 32px box into a 44-tall one too narrow to hit. The
- *      library's `.cm-icon-btn` pins BOTH dimensions from --tap.
+ * - the library's own matcher, inlined into a private copy of the header
+ * so a consumer could reach it at all. That is the exact expression
+ * `src/astro/current.ts` now exists to remove: the library's <Header>
+ * calls `isCurrentPage` itself, so a caller only has to say WHICH link
+ * should stay lit past its own path.
  *
- * Also: the nav links here were bare <a> with no class at all, so
- * `.cm-header__link[aria-current='page']` could not see them and the
- * "which page am I on" state was a hand-rolled `.nav-active` in a
- * second stylesheet. HeaderLink owns that decision now.
+ * What this file owns now is nothing but oem/log's own decisions:
  *
- * Site identity comes from props; `import.meta.env.BASE_URL` is the
- * prefix for a site served under a sub-path. The GitHub mark ships WITH
- * the link in the library, so it cannot render as a zero-width box.
+ *   - the three destinations the blog has, and that `notes` is the
+ *     section link (it stays current while you read /blog/a-note);
+ *   - that the brand is THIS site's title, read from the one config the
+ *     site owns (`src/astro/config.ts` - install.sh never overwrites it).
+ *
+ * Everything else - the burger, the row, the tap floors, the theme toggle,
+ * the GitHub mark - is rendered by `../astro/Header.astro`, which is
+ * vendored and re-synced. There is no <header>, no <style> block and no
+ * `cm-*` class written here, because a second implementation that only
+ * LOOKS like the library header is the failure mode this file existed to
+ * be: the site shipped `.cm-header__link` markup that `.cm-header` CSS
+ * never matched, and "in sync" read as "adopted" for a week.
+ *
+ * `import.meta.env.BASE_URL` is the prefix for a site served under a
+ * sub-path; the GitHub mark ships WITH the link in the library, so it
+ * cannot render as a zero-width box.
  */
-import { SITE } from './config';
-import HeaderLink from './HeaderLink.astro';
+import LibHeader from '../astro/Header.astro';
+import { SITE } from '../astro/config';
 
-/**
- * Built-in marks for the well-known icon links a header carries.
- *
- * These live in the LIBRARY rather than in each consumer because the
- * absence is invisible until someone notices the button is missing: a
- * header that renders `<a class="cm-header__icon-link"><span
- * class="cm-sr-only">GitHub</span></a>` and nothing else gets a correct,
- * focusable link and no pixels, and the only symptom is a zero-width box
- * in the header. Shipping the mark with the link makes the two impossible
- * to separate.
- *
- * 16x16, currentColor, `fill` -- so the mark inherits the header's ink and
- * its hover state with no per-consumer CSS.
- */
-const ICON: Record<string, string> = {
-	github:
-		'<svg viewBox="0 0 16 16" aria-hidden="true" width="18" height="18">' +
-		'<path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>' +
-		'</svg>',
-};
-
-interface Link {
-	href: string;
-	label: string;
-	/** Escape hatch: decide it yourself. Normally HeaderLink does. */
-	active?: boolean;
-	spy?: string;
-}
-
-interface Props {
-	links?: Link[];
-	brand?: string;
-	homeHref?: string;
-	showThemeToggle?: boolean;
-	extraLinks?: Link[];
-}
-
-const {
-	links = [],
-	brand = SITE.title,
-	homeHref = '/',
-	showThemeToggle = true,
-	extraLinks = [],
-} = Astro.props as Props;
-
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL ?? '/';
 
 /* The three destinations this blog actually has, in a layout-appropriate
    order. `active` is a statement about WHERE YOU ARE - one link, the
-   current page - and HeaderLink derives it from the URL rather than from
+   current page - and the library derives it from the URL rather than from
    four hand-written booleans, one per page, that drift the moment a path
-   changes. The library's HeaderLink normalises the trailing slash, the
-   query, the hash and the site base before comparing, and refuses to treat
-   an external href as local, so `/blog` stays current on `/blog/`.
-   The library keeps that apart from the scroll-spy's `is-active`, because
-   on a single-page site both would be true of the same link at once. */
-const nav = [
+   changes. `matchSegment: true` on `notes` is the escape hatch: `/blog`
+   stays current while you read `/blog/a-note`, but the home and about
+   links stay strict, because a section link that lights on every descendant
+   is a different statement. The library keeps this apart from the
+   scroll-spy's `is-active`, because on a single-page site both would be
+   true of the same link at once. */
+const links = [
 	{ href: base, label: 'home' },
-	{ href: `${base}blog/`, label: 'notes' },
+	{ href: `${base}blog/`, label: 'notes', matchSegment: true },
 	{ href: `${base}about/`, label: 'about' },
 ];
-
-const allLinks: Link[] = [...links, ...nav];
-const anySpy = allLinks.some((l) => l.spy);
 ---
 
-<header
-	class:list={['cm-header', allLinks.length > 0 && 'cm-header--nav']}
-	data-cm-header
->
-	<nav class="cm-header__nav">
-		{
-			allLinks.length > 0 && (
-				<button
-					class="cm-icon-btn cm-nav-toggle"
-					type="button"
-					data-cm-nav-toggle
-					aria-expanded="false"
-					aria-controls="cm-header-links"
-					aria-label="Menu"
-					title="Menu"
-				>
-					<span class="cm-nav-toggle__bars" aria-hidden="true">
-						<span class="cm-nav-toggle__bar" />
-					</span>
-				</button>
-			)
-		}
-
-		<a href={homeHref} class="cm-header__brand" aria-label="Home">
-			<span class="cm-header__prompt" aria-hidden="true">$</span>
-			<span class="cm-header__name">{brand}</span>
-			<span class="cm-cursor" aria-hidden="true"></span>
-		</a>
-
-		{
-			allLinks.length > 0 && (
-				<div
-					class="cm-header__links"
-					id="cm-header-links"
-					data-cm-nav={anySpy ? true : undefined}
-				>
-					{allLinks.map((l) => (
-						<HeaderLink
-							href={l.href}
-							matchSegment={l.label === 'notes' || l.href === `${base}blog/` || l.href === `${base}blog`}
-							active={l.active}
-						>
-							{l.label}
-						</HeaderLink>
-					))}
-				</div>
-			)
-		}
-
-		<div class="cm-header__controls">
-			{
-				showThemeToggle && (
-					<button
-						class="cm-icon-btn"
-						type="button"
-						data-cm-theme-toggle
-						aria-label="Toggle theme"
-						title="Toggle theme"
-					>
-						<span data-cm-theme-icon aria-hidden="true">☀</span>
-					</button>
-				)
-			}
-			{
-				extraLinks.map((l) => (
-					<a
-						href={l.href}
-						class="cm-header__icon-link"
-						aria-label={l.label}
-						title={l.label}
-					>
-						<span class="cm-sr-only">{l.label}</span>
-						{/* A named slot FIRST, so a consumer can override with its
-						    own artwork. But an extraLink with neither a slot nor
-						    an `icon` string renders an <a> whose ONLY child is the
-						    sr-only label: a zero-width, invisible, unclickable
-						    link that looks exactly like no button at all. The
-						    built-in mark is what makes the link render.
-
-						    `set:html` is REQUIRED. A named slot's fallback content
-						    is escaped as text, so passing the mark that way renders
-						    `&lt;svg ...` as visible markup: the link measured
-						    337x625 of literal angle-bracket text and contained no
-						    SVG at all. */}
-						<Fragment set:html={ICON[l.label.toLowerCase()] ?? ''} />
-						<slot name={`icon-${l.label.toLowerCase()}`} />
-					</a>
-				))
-			}
-		</div>
-	</nav>
-</header>
-
-<!-- The theme toggle is owned by the library runtime (cli-mono.js), which
-     finds `[data-cm-theme-toggle]`, syncs its icon and aria-pressed,
-     persists under this project's key, and migrates the old one. A second
-     hand-rolled copy of that logic is how two toggles end up fighting over
-     one attribute. -->
-
-<style>
-	/* Between the stack breakpoint and here, five links plus the brand do not
-	   quite fit on one line and a single link strands on its own row. Tighten
-	   the metrics so they stay together instead of orphaning one. */
-	@media (min-width: 641px) and (max-width: 999px) {
-		.cm-header__link { padding: 0 0.45rem; font-size: 0.76rem; }
-		.cm-header__nav { gap: 0.6rem; }
-	}
-</style>
+{/* Spread LAST, so a page that passes `extraLinks` (every page does) wins,
+    and a page that ever needs to replace the whole nav can. Nothing else is
+    passed by the callers today - the nav itself is this file's job. */}
+<LibHeader
+	links={links}
+	brand={SITE.title}
+	homeHref={base}
+	{...Astro.props}
+/>

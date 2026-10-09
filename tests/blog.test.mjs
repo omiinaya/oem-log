@@ -95,6 +95,33 @@ test('the vendored layers are byte-identical to the library', () => {
 		assert.equal(read(vendored), readFileSync(join(lib, origin), 'utf8'),
 			`${vendored} has drifted from the library; run scripts/install.sh`);
 	}
+
+	// The Astro COMPONENTS are vendored exactly the same way and drift
+	// exactly the same way, and NOTHING OUTSIDE this repo would notice:
+	// check-design-sync.sh's MAP names the three CSS layers and the two
+	// runtime files, and has no entry for src/astro/. install.sh --astro
+	// promises "--astro names any consumer whose copy of a library
+	// component has drifted"; until this loop, the only thing that could
+	// was this suite. Measured 2026-10-09: Header.astro and
+	// HeaderLink.astro were both stale here, and current.ts - the module
+	// both of them import - was missing outright.
+	//
+	// config.ts is the ONE exception and it is deliberate, not a gap:
+	// install.sh skips an existing config.ts because "it is the one file
+	// the consumer OWNS and edits with its own title, author and email".
+	// So it is asserted to exist and to be THIS site's identity in the
+	// identity test below, never to be byte-identical.
+	const astroDir = join(root, 'src', 'astro');
+	if (existsSync(join(lib, 'src/astro')) && existsSync(astroDir)) {
+		for (const f of readdirSync(astroDir)) {
+			if (f === 'config.ts') continue;
+			const origin = join(lib, 'src/astro', f);
+			assert.ok(existsSync(origin),
+				`src/astro/${f} exists here but not in the library: it is a fork or a leftover`);
+			assert.equal(readFileSync(join(astroDir, f), 'utf8'), readFileSync(origin, 'utf8'),
+				`src/astro/${f} has drifted from the library; run scripts/install.sh --astro`);
+		}
+	}
 });
 
 test('renamed classes are the library ones, and the old names are gone', () => {
@@ -259,23 +286,52 @@ test('the header is the library component, not a hand-rolled bar', () => {
 	// wrapped onto a second row) and its theme toggle measured 32x44: a
 	// pill. Both defects are in classes the library defines and this
 	// component did not use.
-	const hdr = src('components/Header.astro');
-	const markup = hdr.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<!--[\s\S]*?-->/g, '');
+	// Re-derived 2026-10-09, when the last second implementation - the
+	// 2026-09-30 fork of the library header - became a wrapper. The old
+	// assertion GREPPED this file for the class names, which is exactly
+	// what a fork satisfies and a wrapper does not: the fork contained
+	// every one of them. The claim is now inverted - the consumer file
+	// writes NONE of the header, and the vendored library copy writes ALL
+	// of it - so a fork cannot pass either half.
+	//
+	// All three comment forms are stripped first. The wrapper's own
+	// frontmatter names `.cm-header__link` while explaining why it must
+	// not emit one, and it literally says "There is no <header>, no
+	// <style> block" - so an unstripped scan trips on its own
+	// explanation and reports violations no markup commits. A class
+	// named in a comment is the same trap as a hex named in one.
+	const wrap = src('components/Header.astro');
+	const code = wrap
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/(^|\s)\/\/.*$/gm, '$1');
+	// The <style>/<header> checks run on `code`, which still HAS its
+	// style tags; `markup` below has them removed with their contents.
+	assert.ok(!/<style>/.test(code),
+		'Header.astro carries a scoped stylesheet; every header metric belongs to the library');
+	assert.ok(!/<header[\s>]/.test(code),
+		'Header.astro opens its own <header> element; that is a second implementation');
+	const markup = code.replace(/<style>[\s\S]*?<\/style>/g, '');
 
-	// It renders the library's markup...
+	// It RENDERS the library's markup...
+	assert.ok(/from\s+['"]\.\.\/astro\/Header\.astro['"]/.test(code),
+		'Header.astro must import the library header from ../astro/Header.astro');
+	assert.ok(/<LibHeader/.test(code),
+		'Header.astro renders no <LibHeader>; the site would ship no header at all');
+
+	// ...and writes none of it itself.
 	for (const c of ['cm-header', 'cm-header__nav', 'cm-header__brand',
 		'cm-header__links', 'cm-header__controls', 'cm-icon-btn']) {
-		assert.ok(markup.includes(c), `Header.astro no longer emits .${c}`);
+		assert.ok(!markup.includes(c),
+			`Header.astro hand-writes .${c}; the library's vendored header owns it`);
 	}
-	// ...and it does not carry a second stylesheet for it. ONE narrow
-	// metric block is allowed (the mid-width link tightening the library
-	// itself ships); a second is a second implementation returning.
-	const blocks = hdr.match(/<style>[\s\S]*?<\/style>/g) || [];
-	const selectors = blocks.join('\n').match(/\.[a-z][a-z0-9_-]*\{/g) || [];
-	for (const sel of ['.header{', '.nav{', '.brand{', '.internal-links', '.theme-toggle',
-		'.controls{', '.cursor{']) {
-		assert.ok(!selectors.join('').includes(sel),
-			`Header.astro is re-declaring ${sel} in a scoped block; the library owns it`);
+
+	// ...and the copy that DOES render them is the library's, in-repo.
+	const lib = src('astro/Header.astro');
+	for (const c of ['cm-header', 'cm-header__nav', 'cm-header__brand',
+		'cm-header__links', 'cm-header__controls', 'cm-icon-btn']) {
+		assert.ok(lib.includes(c), `the vendored library header no longer emits .${c}`);
 	}
 });
 
@@ -285,39 +341,109 @@ test('the current nav link is decided by the library, not by this project', () =
 	// decision, and it normalises the trailing slash, the query, the hash
 	// and the site base before comparing - which is why /blog stays
 	// current on /blog/a-post and on /blog/.
-	const hdr = src('components/Header.astro');
-	assert.ok(/import\s+HeaderLink\s+from/.test(hdr),
-		'Header.astro must use the library\'s <HeaderLink>, which owns the current-page match');
-	assert.ok(/<HeaderLink/.test(hdr),
-		'Header.astro renders no <HeaderLink>, so no nav link can be aria-current');
-	// The old hand-computed state must be gone from this project entirely.
-	const hl = src('components/HeaderLink.astro');
-	assert.ok(!/nav-active/.test(hl),
-		'HeaderLink.astro still adds the local .nav-active class instead of aria-current');
-	// The component must be a real copy of the library's, not a re-typed
-	// approximation: the normaliser is the whole contract, and a partial
-	// copy of it is how `/blog` stops being current on `/blog/`.
+	// Re-derived 2026-10-09. The old version asserted that THIS file
+	// imported <HeaderLink> and that a LOCAL HeaderLink.astro held a
+	// `strip()` normaliser - which pinned the fork, not the guarantee.
+	// The guarantee is: one matcher, in one module, called by both
+	// library components, and no third copy anywhere in this project.
 	//
-	// It is checked HERE, inside this repo, and not by reading the
-	// library's path: a test that reaches outside the repository passes on
-	// this host and fails on every CI runner with EACCES, which is the
-	// one failure a suite that gates a deploy must never have.
-	assert.ok(/const strip = /.test(hl),
-		'the local HeaderLink is missing the strip() normaliser the library owns');
-	assert.ok(/aria-current/.test(hl),
-		'the local HeaderLink never renders aria-current');
+	// Checked HERE, inside this repo, and not by reading the library's
+	// path: a test that reaches outside the repository passes on this
+	// host and fails on every CI runner with EACCES, which is the one
+	// failure a suite that gates a deploy must never have. src/astro/
+	// is vendored, so it is inside this repo while still being the
+	// library's code - which is what makes it checkable at all.
+	const hdr = src('components/Header.astro');
+	const cur = src('astro/current.ts');
+	assert.ok(/export const isCurrentPage/.test(cur),
+		'src/astro/current.ts no longer exports isCurrentPage; the matcher has no home');
+	for (const f of ['astro/Header.astro', 'astro/HeaderLink.astro']) {
+		const body = src(f);
+		assert.ok(/from\s+['"]\.\/current['"]/.test(body) && /isCurrentPage\(/.test(body),
+			`${f} does not call the shared isCurrentPage matcher; a second copy has appeared`);
+	}
+
+	// The old hand-computed state must be gone from this project
+	// entirely - and the PRIVATE normaliser with it. Both used to live
+	// here: `nav-active` in the markup, `const strip =` in the local
+	// HeaderLink, and a third spelling of the same idea inlined into the
+	// fork's nav block as `matchSegment={l.label === 'notes' || ...}`.
+	for (const f of astroFiles()) {
+		const body = stripComments(readFileSync(f, 'utf8'));
+		assert.ok(!/const strip\s*=/.test(body),
+			`${f.replace(root, '')} carries its own strip() normaliser; src/astro/current.ts owns that`);
+		assert.ok(!/nav-active/.test(body),
+			`${f.replace(root, '')} still computes .nav-active instead of aria-current`);
+	}
+
+	// The wrapper's ONLY statement about "which page am I on" is which
+	// link is allowed to stay lit past its own path. Every hand-written
+	// `active: true` boolean - the trap that forced the fork - is gone.
+	// Read from the comment-stripped file: the frontmatter explains the
+	// opt-in by naming it, so an unstripped grep finds the phrase in
+	// prose and a mutation that deletes the real one passes.
+	const hcode = stripComments(hdr);
+	assert.ok(/matchSegment:\s*true/.test(hcode),
+		'the notes link must opt in with matchSegment, or /blog goes dark on /blog/a-note');
+	assert.ok(!/active:\s*true/.test(hcode),
+		'Header.astro hand-writes `active: true`; that is the per-page boolean that drifts');
 });
 
 test('the site identity comes from one config, not three places', () => {
 	// config.ts calls itself "the ONE place to set your identity". The blog
 	// kept its title in src/consts.ts and its GitHub URL inline in the
-	// header's markup. Header.astro now reads SITE from components/config.
-	const cfg = src('components/config.ts');
+	// header's markup. The first pass moved the real values into
+	// components/config.ts - and left the file the LIBRARY components
+	// actually read, src/astro/config.ts, holding the library's own
+	// `oem/ui` placeholder. Two configs is the same disease as three
+	// places: whichever one is dead is the one a reader will edit.
+	//
+	// The identity now lives in src/astro/config.ts and nowhere else.
+	// That is the file install.sh --astro refuses to overwrite ("the one
+	// file the consumer OWNS"), so it is the only place that survives a
+	// re-vendor - which is precisely why it has to be the real one.
+	const cfg = src('astro/config.ts');
+	const def = stripComments(cfg);
+	assert.ok(/export const SITE/.test(cfg), 'src/astro/config.ts must export SITE');
+	assert.ok(!existsSync(join(root, 'src/components/config.ts')),
+		'the second config is back; src/astro/config.ts is the one the library reads');
+
+	// Exactly one definition across the whole source tree, so "one config"
+	// is counted rather than assumed.
+	const defs = [];
+	(function walk(d) {
+		for (const e of readdirSync(d)) {
+			const p = join(d, e);
+			if (statSync(p).isDirectory()) walk(p);
+			else if (e.endsWith('.astro') || e.endsWith('.ts')) {
+				if (/export const SITE\s*=/.test(readFileSync(p, 'utf8'))) {
+					defs.push(p.replace(root + '/', ''));
+				}
+			}
+		}
+	})(join(root, 'src'));
+	assert.deepEqual(defs, ['src/astro/config.ts'],
+		`SITE must be defined exactly once: found ${defs.join(', ') || 'none'}`);
+
+	// The values are THIS site's, read from the declaration and not from
+	// the prose around it - the file's own comment names `oem/ui` while
+	// explaining that it used to be wrong, so an unstripped scan trips on
+	// its own explanation and calls the fix a bug.
+	assert.ok(def.includes("title: 'oem/log'"), 'the site title is not oem/log');
+	assert.ok(!/title:\s*'oem\/ui'/.test(def),
+		'src/astro/config.ts still carries the library placeholder; the brand would print $ oem/ui');
+	assert.ok(def.includes('https://log.oem.ngo'), 'SITE.url is not this site');
+
+	// The wrapper reads SITE from it and hands it to the header as the
+	// brand, so the header cannot print an identity the config does not
+	// name.
 	const hdr = src('components/Header.astro');
-	assert.ok(/export const SITE/.test(cfg), 'components/config.ts must export SITE');
-	assert.ok(/from ['"]\.\/config['"]/.test(hdr), 'Header.astro must read SITE from ./config');
+	assert.ok(/from\s+['"]\.\.\/astro\/config['"]/.test(hdr),
+		'Header.astro must read SITE from ../astro/config');
+	assert.ok(/brand=\{SITE\.title\}/.test(hdr),
+		'Header.astro must pass SITE.title as the brand; a literal would be a second source of truth');
 	// No literal repo URL in the header markup any more.
-	const markup = hdr.replace(/<!--[\s\S]*?-->/g, '').replace(/<style>[\s\S]*?<\/style>/g, '');
+	const markup = stripComments(hdr).replace(/<style>[\s\S]*?<\/style>/g, '');
 	assert.ok(!/https:\/\/github\.com\/[a-z]/i.test(markup),
 		'Header.astro hardcodes a github.com URL in its markup; that is what SITE.github is for');
 
