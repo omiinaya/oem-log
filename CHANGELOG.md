@@ -6,6 +6,64 @@ All notable changes to oem/log. Format loosely follows [Keep a Changelog](https:
 
 ### Changed
 
+- **The article head is the library's `<PostHead>` now, not a second copy
+  in the layout.** `BlogPost.astro` hand-rolled its kicker, title and
+  byline in four scoped rules — `.post-head`, `.byline`, `.sep` and
+  `.updated` — while the library's vendored `PostHead.astro` sat in
+  `src/astro/` **unimported**. That is the same failure this repo's
+  `Header.astro` comment already records: a fork that only *looks* like
+  the library, so every fix the library makes stops at the repo boundary.
+
+  The fork's byline put an ELEMENT separator (`<span class="sep">·</span>`)
+  inside a `flex-wrap: wrap` row — precisely the shape oem-ui deleted when
+  it made the footer separator generated, and then again for the byline
+  (oem-ui `83280fd`). MEASURED in WebKit at 390 and 1280 before the swap:
+  `sepElements: 1`, `genMarks: 0`, one line. It did not strand **only
+  because no post carries `updatedDate`**, so the row never wrapped. A
+  latent bug, not an absent one — the first post with an `updatedDate`
+  would have stranded a dot at every phone width. The same swap removes the
+  layout's re-declarations of `.cm-prose`'s body colour/size, the `## `
+  h2 mark, the link colour pair and the mobile prose bumps, all of which
+  `components.css` already owns (the mobile bumps are declared GLOBALLY in
+  the library, not only inside `.cm-prose`, so a local copy was pure
+  duplication).
+
+  Measured after (WebKit, 390 and 1280): `sepElements: 0`, `genMarks: 1`,
+  the generated `::before` dot paints, `.cm-post-head` carries the
+  library's border and rhythm, `## ` still renders, and
+  `documentElement.scrollWidth == innerWidth` at both widths.
+
+- **The vendored library was brought back in sync while adopting it.** The
+  2026-10-09 migration left all five vendored files drifted (tokens 134
+  lines, base 235, components 2573, runtime 1560, plus `src/astro/Header.astro`
+  at 104). A stale vendored `components.css` is the silent half of every
+  consumer migration: the markup adopts, the CSS does not, and the dot
+  strands again with nothing red anywhere. `check-design-sync.sh` now
+  reports `in sync`.
+
+### Added
+
+- **A negative control for the byline probe** (`tests/negctl-byline-after.py`).
+  It injects the *wrong* fix — `::after` on `:not(:last-child)` instead of
+  `::before` on `:not(:first-child)` — which also stops the dot being a
+  flex item but keeps it riding the PRECEDING fragment. MEASURED: the
+  narrow host goes from 2 lines / 0 stranded to 3 lines / **2 stranded**,
+  and the probe flags both. Without this, "no line ends with a separator"
+  was a claim no run had ever been able to falsify, because the probe read
+  ELEMENTS and the wrong fix leaves no element behind.
+
+### Fixed
+
+- **`tests/blog.test.mjs`: the dead-CSS check read comments as CSS.** It
+  scanned every `.class`-looking token in a `<style>` block without
+  stripping comments, so the first migration that *documented what it
+  removed* (`the old .byline rule is gone`) failed on its own explanation.
+  Its sibling font-size check already called `stripComments`; this one did
+  not. Stripping does not weaken it — the new mutation
+  `leave a genuinely dead selector in the layout style block` still kills
+  it — which is the point: the check now fails for real dead CSS and not
+  for prose.
+
 - **The home page and the index page no longer re-implement components
   oem-ui already owns.** The first migration moved the blog onto the
   vendored layers, but `index.astro` and `blog/index.astro` kept a second

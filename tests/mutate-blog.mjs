@@ -70,6 +70,44 @@ const MUTANTS = [
 		'src/styles/cli-mono/base.css',
 		'strong, b { color: var(--ink); font-weight: 700; }',
 		'/* strong, b removed by mutation */'],
+
+	// ---- the post-head adoption (the consumer keeps the library surface) ----
+
+	// The hand-rolled post head goes back. A consumer that re-implements
+	// library surface is the whole failure the migration addresses, and
+	// it is invisible to the drift checker because the vendored files are
+	// still in sync - the second copy lives in the site's own layout.
+	['hand-roll the article head again instead of using <PostHead>',
+		'src/layouts/BlogPost.astro',
+		'<PostHead title={title} date={pubDate} updatedDate={updatedDate} />',
+		'<header class="post-head"><p class="cm-kicker">note</p>' +
+		'<h1>··· {title} ···.md</h1><div class="byline">' +
+		'<span>@omiinaya</span><span class="sep" aria-hidden="true">·</span>' +
+		'</div></header>'],
+
+	// Stop passing updatedDate. The post page then never renders the
+	// three-fragment byline, which is the one that wraps - so the
+	// stranded-separator case the library just fixed is never exercised
+	// here, while the page still looks completely correct.
+	['render <PostHead> without updatedDate, so the wrappable case never renders',
+		'src/layouts/BlogPost.astro',
+		'<PostHead title={title} date={pubDate} updatedDate={updatedDate} />',
+		'<PostHead title={title} date={pubDate} />'],
+
+	// The vendored CSS goes back to the ELEMENT separator - the exact
+	// pre-fix library. Markup adopts, CSS does not: the dot strands
+	// again at phone widths and nothing anywhere is red.
+	['revert the vendored byline to the element separator',
+		'src/styles/cli-mono/components.css',
+		".cm-byline > *:not(:first-child)::before {\n	content: '·';\n	color: var(--ink-faint);\n	opacity: 0.6;",
+		'.cm-byline__sep { opacity: 0.6; }\n.cm-byline > *:not(:first-child)::before { content: none;\n	color: var(--ink-faint);\n	opacity: 0.6;'],
+
+	// The strip I added to the dead-CSS check must not blind it: a REAL
+	// dead selector in a real style block still has to fail.
+	['leave a genuinely dead selector in the layout style block',
+		'src/layouts/BlogPost.astro',
+		'	.hero-image { margin: 1rem 0 2rem; }',
+		'	.hero-image { margin: 1rem 0 2rem; }\n	.the-real-dead-one { color: red; }'],
 ];
 
 let killed = 0, missed = 0, noop = 0;

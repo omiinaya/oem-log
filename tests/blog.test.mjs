@@ -235,7 +235,17 @@ test('no scoped-style selector targets a class its own file does not use', () =>
 	}
 	const problems = [];
 	for (const f of astroFiles()) {
-		const style = (readFileSync(f, 'utf8').match(/<style>[\s\S]*?<\/style>/g) || []).join('\n');
+		// COMMENTS ARE NOT CSS. Without this strip, a comment that merely
+		// NAMES a class (`moved to the library's .cm-post-head; the old
+		// .byline rule is gone`) is read as a selector and reported as
+		// dead - a failure that describes prose, not styles. A sibling
+		// check below already strips; this one did not, so the first
+		// migration that documented what it removed failed on its own
+		// explanation. Stripping does not weaken the check: it still sees
+		// every real selector, which is the only thing dead CSS means.
+		const style = stripComments(
+			(readFileSync(f, 'utf8').match(/<style>[\s\S]*?<\/style>/g) || []).join('\n')
+		);
 		for (const m of style.matchAll(/\.([a-z][a-z0-9_-]*)/gi)) {
 			const cls = m[1];
 			if (cls.startsWith('cm-') || /^\d/.test(cls)) continue;
@@ -538,4 +548,59 @@ test('the runtime is referenced as a real import, not a raw src', () => {
 			`${e} uses a raw <script src>; without is:inline Astro drops it from dist/`);
 		assert.ok(hasImport || hasScriptTag, `${e} loads no runtime at all`);
 	}
+});
+
+/* ---------- the article head is the LIBRARY's component ---------- */
+
+test('the article head is the library <PostHead>, not a second implementation', () => {
+	// The layout hand-rolled kicker/title/byline in four CSS rules
+	// (`.post-head`, `.byline`, `.sep`, `.updated`) while the library's
+	// vendored `PostHead.astro` sat in src/astro UNIMPORTED. That is the
+	// same failure this repo's own Header comment records: a fork that
+	// only LOOKS like the library, so every library fix stops at the
+	// repo boundary. The migration is the import plus the call site.
+	const layout = src('layouts/BlogPost.astro');
+	assert.ok(/import\s+PostHead\s+from\s+['"]\.\.\/astro\/PostHead\.astro['"]/.test(layout),
+		'BlogPost.astro does not import the vendored PostHead component');
+	assert.ok(/<PostHead[\s\S]*?\/>/.test(layout),
+		'BlogPost.astro never renders <PostHead>, so the component is still dead weight');
+	assert.ok(/updatedDate=\{updatedDate\}/.test(layout),
+		'<PostHead> is rendered without updatedDate, so the three-fragment byline - the one that wraps - is never produced on a post page');
+});
+
+test('the fork\'s post-head CSS is gone, not shadowing the library', () => {
+	// A leftover `.byline { ... }` block would not fail the build and
+	// would not fail the drift checker; it would just quietly style
+	// markup that no longer exists, or - worse - win over the library
+	// rule for markup the library now emits. Every one of these four
+	// selectors is dead now, and three of them name classes the library
+	// does not use at all.
+	const layout = src('layouts/BlogPost.astro');
+	for (const dead of ['.post-head', '.byline', '.sep', '.updated']) {
+		assert.ok(!new RegExp(`^\\s*\\${dead}\\s*[,{]`, 'm').test(layout),
+			`BlogPost.astro still defines ${dead}; the library owns that surface now`);
+	}
+	assert.ok(!/class="sep"/.test(layout) && !/class="byline"/.test(layout),
+		'BlogPost.astro still emits the fork\'s byline markup');
+	// And the fork's h1 rule must go with it: the library's `.cm-head h1`
+	// owns size, weight, leading and tracking.
+	assert.ok(!/\.post-head h1\s*\{/.test(layout),
+		'the fork\'s h1 rule survives and competes with the library\'s .cm-head h1');
+});
+
+test('the vendored byline separator is the generated one, so it cannot strand', () => {
+	// The library now generates the separator with `::before` on the item
+	// it PRECEDES. The vendored copy has to BE that version, because a
+	// stale vendored components.css is the silent half of every consumer
+	// migration: the markup adopts, the CSS does not, and the dot
+	// strands again at phone widths with nothing red anywhere.
+	const css = stripComments(src('styles/cli-mono/components.css'));
+	const m = /\.cm-byline\s*\{([^}]*)\}/.exec(css);
+	assert.ok(m, '.cm-byline is missing from the vendored components.css');
+	assert.ok(/flex-wrap:\s*wrap/.test(m[1]),
+		'the vendored .cm-byline does not wrap, so this check measures nothing');
+	assert.ok(/\.cm-byline\s*>\s*\*:not\(:first-child\)\s*::before/.test(css),
+		'the vendored byline separator is not the generated ::before-on-the-preceding-item rule');
+	assert.ok(!/\.cm-byline__sep\b/.test(css),
+		'the vendored copy still defines .cm-byline__sep, the element separator that strands');
 });
