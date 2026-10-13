@@ -22,6 +22,12 @@
 	   the content 256px down. The rail is 232px, wide enough for the longest
 	   label at --min-font, and it only exists above --bp-rail. */
 	--rail-w: 232px;
+	/* The documentation layout's rail width, measured off shadcn's docs
+	   shell (288px) rather than guessed. Kept separate from --rail-w: that
+	   one is the APPLICATION rail a dashboard uses, this one is a docs
+	   table of contents, and they are allowed to differ. */
+--doc-toc-w: 288px;
+--doc-header-h: 4rem;
 	--gutter: 1.25rem;
 	--head-top: 3rem;
 	--head-h1: 2rem;
@@ -100,6 +106,42 @@
 	--sidebar-width-mobile: 18rem;
 	--sidebar-icon-width: 3rem;
 
+	/* ---- guildrail (server icon rail) --------------------------
+	   Two widths, and the second one exists because of the first.
+
+	   --guildrail-w is the rail a chat client puts at the far leading
+	   edge: one square per server, so it is icon-width, not
+	   --sidebar-icon-width (a collapsed LABEL sidebar is 3rem; a
+	   monogram in a 44px square wants the 4.5rem the square is
+	   centred in).
+
+	   --guildrail-bleed is how far the rail's clip edge is pushed out
+	   so `.cm-tooltip__tip` can escape the rail's own scrollport. A
+	   scrollport clips everything painted past its padding box, and
+	   `overflow-clip-margin` - the one property that widens that box -
+	   is not implemented in WebKit at all (probe:
+	   CSS.supports('overflow-clip-margin', '20px') -> false), so the
+	   padding box is widened by hand instead. It must be at LEAST the
+	   tip's cap, `min(18rem, 52vw)`, or the tip is cut in half. */
+	--guildrail-w: 4.5rem;
+	/* The bleed is stated as the tip's cap, `min(18rem, 52vw)`, which
+	   keeps that documented promise - it must be at LEAST the cap or the
+	   tip is cut in half - at every width instead of only wide ones:
+	   18rem on a desktop, where `min` picks it because 52vw is larger,
+	   so nothing changes there.
+
+	   MEASURED, and the reason this is not cosmetic: the rail's box is
+	   `--guildrail-w + --guildrail-bleed`, so a fixed 18rem made that
+	   box 72 + 288 = 360px. At a 320px viewport it ran to x=401, and
+	   `overflow-x: hidden` clips the rail's CONTENT only - a clipping
+	   element's own border box still counts toward the scrollport - so
+	   the page scrolled sideways to 401px on a 320px phone. With the
+	   cap as the bleed the box is 72 + 166 = 238px. Layout is
+	   unchanged: the grid column still measures `--guildrail-w`,
+	   because `margin-inline-end` cancels the bleed exactly as before,
+	   and the padding is what made the content box 4.5rem. */
+	--guildrail-bleed: min(18rem, 52vw);
+
 	/* ---- measure (line length) ----------------------------------
 	   A width in `ch` against the monospace font, so a line's character
 	   count is the thing being decided rather than an accident of the
@@ -124,6 +166,35 @@
 	/* Widest colour swatch: the chip (1.4em) + its gap + the longest token
 	   name in the system at --min-font. Sized once, from the tokens. */
 	--swatch-col: calc(1.4em + var(--space-2) + 15ch);
+
+	/* ---- typeset controls -----------------------------------------
+	   The three knobs the typeset system is built on, and the reason
+	   it is a system rather than a prose block: every other value in
+	   it (heading sizes, list indents, the space under a heading)
+	   DERIVES from these, so a consumer retunes a whole document by
+	   setting three properties.
+
+	   Declared here, in `:root` and theme-independent, because
+	   typographic rhythm does not differ between the dark and light
+	   themes - the same reason `--measure` lives here.
+
+	   They are tokens and not bare custom properties on the rule
+	   because `components.css` may only read declared tokens: an
+	   undeclared `var()` invalidates its declaration, and inside a
+	   shorthand it takes the whole declaration with it. That is a
+	   measured rule in this library, not a convention.
+
+	   The SIZE is two knobs because the viewport and the reader are
+	   different questions: the phone media query sets the LANE (how big
+	   this column is on this screen) and a preset sets the SCALE (how
+	   much larger this reader wants it). One knob made them compete for
+	   one declaration at equal specificity, where source order decides -
+	   see the note above the presets for what that measured. */
+	--cm-typeset-size-lane: 1em;
+	--cm-typeset-scale: 1;
+	--cm-typeset-size: 1em;
+	--cm-typeset-leading: 1.75;
+	--cm-typeset-flow: 1.25em;
 
 	/* ---- spacing scale -----------------------------------------
 	   The ONLY legal vertical and inline rhythm. Before this existed the
@@ -294,6 +365,23 @@
 	--knob-d: calc(var(--track-h) - 0.25rem);
 	--knob-inset: 0.1875rem;
 
+	/* ---- message timeline geometry ------------------------------
+	   `.cm-msglist`'s row is a four-track grid - timestamp gutter,
+	   avatar column, message, reserved action column - and every row
+	   has to land the same tracks or the timeline stops lining up.
+	   Both fixed tracks live HERE rather than being read off
+	   `.cm-avatar`, because the COLUMN is a layout decision the avatar
+	   component cannot know: a consumer who steps their avatars down
+	   to `--sm` still wants a text column that starts where it did.
+	   The default equals `.cm-avatar`'s own default (pinned by a test),
+	   so the empty slot a grouped row carries is the same width as the
+	   real avatar above it.
+	   The gutter is the contract's ~60px stamp column: wide enough for
+	   `11:12` at --text-micro beside the avatar, narrow enough that a
+	   402px phone still gives the message the majority of the row. */
+	--msglist-gutter: 3.75rem;
+	--msglist-avatar: 2.5rem;
+
 	/* ---- scrollbar (dark default) ------------------------------
 	   width:thin + always-visible gutter so short pages reserve the same
 	   12px a scrolling page uses. Without this the content box differs by
@@ -348,6 +436,12 @@
 	/* header / footer surfaces */
 	--header-bg: #0a0a0a;
 	--footer-bg: #080808;
+
+	--chart-c1: #e8e8e8;
+	--chart-c2: #b4b4b4;
+	--chart-c3: #8a8a8a;
+	--chart-c4: #6b6b6b;
+	--chart-c5: #525252;
 
 	/* shadow */
 	--shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
@@ -441,6 +535,18 @@
 	--vignette: radial-gradient(120% 90% at 50% 0%, transparent 62%, rgba(0, 0, 0, 0.06));
 
 	scrollbar-color: #b8b8b8 #f0f0f0;
+
+	/* The same five steps, inverted for a light surface: c1 is the
+	   darkest ink, and the steps DESCEND from it. The light scale is
+	   not the dark one re-used - measured, c2 at #b4b4b4 is 2.1:1 on
+	   --panel-nested here and c5 at #525252 is 1.1:1, so reusing the
+	   dark values painted three of five series as near-invisible
+	   rules on a white card. */
+	--chart-c1: #111111;
+	--chart-c2: #3f3f3f;
+	--chart-c3: #5f5f5f;
+	--chart-c4: #7d7d7d;
+	--chart-c5: #999999;
 }
 
 /* ============================================================
@@ -505,6 +611,25 @@
 	--selection-color: #ffffff;
 	--vignette: radial-gradient(120% 90% at 50% 0%, transparent 62%, rgba(0, 0, 0, 0.5));
 	scrollbar-color: #3a3a3a #0a0a0a;
+
+	/* ---- the chart series scale (five steps, no chroma) --------
+	   shadcn's ChartConfig colours a series through --chart-1..5 and
+	   that is the one part of its mechanism worth keeping: a series
+	   colour that resolves through a custom property, so a consumer
+	   re-ranks a series by setting a property instead of editing a
+	   rule. The VALUES are this system's, because this system has no
+	   hue at all - five greys from --ink down to a floor that still
+	   clears 3:1 on --panel and --panel-nested, which is the WCAG
+	   figure for a non-text mark. The runtime emits one
+	   --cm-chart-cN per series from these, so the line, the bar, the
+	   slice, the gradient stop, the legend dot and the tooltip dot
+	   cannot disagree, and the light theme is its own five steps
+	   rather than a second dark chart. */
+	--chart-c1: #e8e8e8;
+	--chart-c2: #b4b4b4;
+	--chart-c3: #8a8a8a;
+	--chart-c4: #6b6b6b;
+	--chart-c5: #525252;
 }
 
 [data-cm-theme='light'],
@@ -554,4 +679,13 @@
 	--selection-color: #000000;
 	--vignette: radial-gradient(120% 90% at 50% 0%, transparent 62%, rgba(0, 0, 0, 0.06));
 	scrollbar-color: #b8b8b8 #f0f0f0;
+
+	/* The same five steps as the document light block above, because
+	   a scoped subtree is the same palette at a different root. */
+	--chart-c1: #111111;
+	--chart-c2: #3f3f3f;
+	--chart-c3: #5f5f5f;
+	--chart-c4: #7d7d7d;
+	--chart-c5: #999999;
+
 }

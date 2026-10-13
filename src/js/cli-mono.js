@@ -476,44 +476,70 @@
 		});
 	}
 
+	/* DELEGATED, once, at the document. Per-button binding was measured to
+	   miss the buttons it exists for: a component framework (React, and the
+	   matrix-arrow client is one) REPLACES the button node on every re-render,
+	   so a listener attached at init() is gone by the time the user clicks and
+	   the clipboard stays empty while the button is plainly on screen. The old
+	   per-button loop also had to guard against double-binding, because init()
+	   runs again on every astro:page-load. One delegated listener has neither
+	   problem: it survives any re-render, and the module flag means a second
+	   init() cannot add a second one (measured before this: a re-init made one
+	   click produce TWO clipboard writes and flicker the label through two
+	   state changes). */
+	var copyDelegated = false;
 	function initCopy(root) {
-		(root || document)
-			.querySelectorAll('[data-cm-copy]')
-			.forEach(function (btn) {
-				/* The bind guard every other init* here has, and the only
-				   one this was missing. init() runs again on every
-				   astro:page-load, and each run added a SECOND click
-				   listener to the same button, so one click copied twice
-				   and the label flickered through two state changes.
-				   Measured in WebKit: after a re-init, one click on a
-				   copy button produced 2 clipboard writes. */
-				if (btn.dataset.cmCopyBound) return;
-				btn.dataset.cmCopyBound = '1';
-				btn.addEventListener('click', function () {
-					var sel = btn.getAttribute('data-cm-copy');
-					var src = sel ? document.querySelector(sel) : btn.previousElementSibling;
-					var text = src ? (src.innerText || src.textContent) : '';
-					if (!text) return;
-					var original = btn.getAttribute('data-cm-label') || btn.textContent;
-					copyText(String(text).trim())
-						.then(function () {
-							setCopyLabel(btn, 'copied');
-							btn.classList.add('is-copied');
-							btn.classList.remove('is-error');
-						})
-						.catch(function () {
-							setCopyLabel(btn, 'press \u2318c');
-							btn.classList.add('is-error');
-						})
-						.then(function () {
-							setTimeout(function () {
-								setCopyLabel(btn, original);
-								btn.classList.remove('is-copied');
-								btn.classList.remove('is-error');
-							}, 1400);
-						});
+		if (copyDelegated) return;
+		copyDelegated = true;
+		(root || document).addEventListener('click', function (e) {
+			var t = e.target;
+			var btn = t && t.closest ? t.closest('[data-cm-copy]') : null;
+			if (!btn) return;
+			/* The attribute takes EITHER a CSS selector or the literal text to
+			   copy, told apart by trying to parse it as a selector. Before this
+			   the value was ALWAYS passed to querySelector, so a caller who put
+			   the message body in the attribute -- the obvious reading of the
+			   name, and what the matrix-arrow client does -- got a selector
+			   syntax error and an EMPTY clipboard, while the button still
+			   flipped to 'copied'. A body like "arrow-delete-1791724585513" is
+			   worse than that: it PARSES (it is a legal custom-element name)
+			   and matches nothing, so the failure is silent either way. */
+			var val = btn.getAttribute('data-cm-copy') || '';
+			var direct = false;
+			var src = null;
+			if (val) {
+				try {
+					src = document.querySelector(val);
+				} catch (err) {
+					direct = true;
+				}
+				/* A selector that parses but matches nothing is a caller meaning
+				   text, not a broken page. */
+				if (!direct && !src) direct = true;
+			} else {
+				src = btn.previousElementSibling;
+			}
+			var text = direct ? val : (src ? (src.innerText || src.textContent) : '');
+			if (!text) return;
+			var original = btn.getAttribute('data-cm-label') || btn.textContent;
+			copyText(String(text).trim())
+				.then(function () {
+					setCopyLabel(btn, 'copied');
+					btn.classList.add('is-copied');
+					btn.classList.remove('is-error');
+				})
+				.catch(function () {
+					setCopyLabel(btn, 'press \u2318c');
+					btn.classList.add('is-error');
+				})
+				.then(function () {
+					setTimeout(function () {
+						setCopyLabel(btn, original);
+						btn.classList.remove('is-copied');
+						btn.classList.remove('is-error');
+					}, 1400);
 				});
-			});
+		});
 	}
 
 	/* Writing btn.textContent DESTROYS the button's own children, so a
@@ -752,8 +778,65 @@
 					else if (typeof dlg.show === 'function') dlg.show();
 				});
 			});
-	}
+		/* The other half of the same contract. A <form method="dialog">
+		   closes the dialog and that still works untouched - but the place
+		   this component gives you for actions, .cm-dialog__foot, is OUTSIDE
+		   that form, so a plain <button> in it submits nothing and closes
+		   nothing: dead, with no error, on every platform. On a phone there
+		   is no Escape either, so the modal simply cannot be dismissed and
+		   every control behind it stops responding - which a reader reports
+		   as "none of it works" rather than as one dead button. The toast
+		   already has data-cm-toast-close for exactly this reason; a dialog
+		   needs the symmetric attribute.
 
+		   value= is carried onto returnValue, so a consumer reads the same
+		   answer it would from the form path, and a dialog reached by id
+		   (data-cm-close="id") works from a trigger outside it. */
+		(root || document)
+			.querySelectorAll('[data-cm-close]')
+			.forEach(function (btn) {
+				if (btn.dataset.cmDialogCloseBound) return;
+				btn.dataset.cmDialogCloseBound = '1';
+				btn.addEventListener('click', function () {
+					var id = btn.getAttribute('data-cm-close');
+					var dlg = id
+						? document.getElementById(id)
+						: (btn.closest ? btn.closest('dialog') : null);
+					if (!dlg || typeof dlg.close !== 'function') return;
+					var v = btn.getAttribute('value');
+					if (v !== null && 'returnValue' in dlg) dlg.returnValue = v;
+					if (dlg.open) dlg.close();
+			});
+		});
+
+	/* An ALERT dialog carries `closedby="closerequest"` in its markup and
+	   needs NO script here. That is the whole implementation, and it is
+	   worth saying why, because the obvious script is wrong.
+
+	   The tempting guard is a click handler that re-opens the dialog when
+	   the reader clicks the backdrop. It was written, it passed, and then
+	   it was measured and deleted:
+
+	     - <dialog>.showModal() does NOT light-dismiss on an outside click.
+	       The spec default is closedby="closerequest", so an outside click
+	       is already ignored. Verified on real WebKit, real pointer, four
+	       builds: with closedby absent, "any", "closerequest" and "none",
+	       only "any" closed on an outside click. The premise the guard was
+	       built on was inverted.
+	     - The reopen handler was therefore dead code: it reproduced the
+	       platform's own default. Worse, it DID have a live effect - a
+	       stale flag left a later Escape springing the dialog back open,
+	       trapping the reader in a confirm they had asked to leave.
+
+	   So the semantics are declared, not scripted. closedby is enforced by
+	   the engine (checks/closerequest/none), and a browser that does not
+	   know the attribute falls back to the same ignore-the-click default.
+	   Escape still closes, which is what the reader expects from a confirm.
+
+	   If a future engine ever gains real light dismiss, this attribute is
+	   already the correct opt-out and no code changes. */
+
+	}
 	/* ---------- toasts ----------
 	   Transient is the whole contract, so the retirement has to be
 	   somebody's job and it is ours. The node is inert in the document
@@ -993,15 +1076,27 @@
 			host.dataset.cmClamp = '1';
 			var apply = function () {
 				// Measure the natural tip and the room the anchor leaves.
-				// `left`/`right` say which edge the variant pinned to.
+				// The VARIANT class says which logical edge it pinned to;
+				// the rendered direction maps that to a screen edge.
 				var cs = getComputedStyle(tip);
 				// Which EDGE the variant pins to is a class, not a
 				// computed style: `getComputedStyle().right` is resolved
 				// to a used pixel value, so it is never 'auto' and
 				// testing for it always failed. Read the class.
-				var pinnedRight = host.classList.contains('cm-tooltip--end');
+				var pinnedEnd = host.classList.contains('cm-tooltip--end');
 				var tr = host.getBoundingClientRect();
 				var vw = document.documentElement.clientWidth;
+				/* `--start` and `--end` are spelled LOGICALLY in the
+				   stylesheet (inset-inline-start / -end), so which screen
+				   edge the tip is pinned to depends on the RENDERED
+				   direction, not on the class alone. Measuring the room
+				   from the physical `right` in an RTL subtree reads the
+				   opposite side from the one the tip actually grows into.
+				   Flip the two room branches, not the class. */
+				var rtl = false;
+				try {
+					rtl = getComputedStyle(host).direction === 'rtl';
+				} catch (e) { rtl = false; }
 				// A centred tip is centred on the trigger; an anchored one
 				// starts at the trigger's edge and runs toward the far one.
 				// `room` is how much of the VIEWPORT the tip is allowed to
@@ -1039,10 +1134,20 @@
 				var gutter = pxOf('--gutter');
 				var left = tr.left, right = vw - tr.right;
 				var room;
-				if (pinnedRight) {
-					room = tr.right - gutter;
-				} else if (host.classList.contains('cm-tooltip--start')) {
+				/* `--start` pins to the trigger's inline-START and grows
+				   toward its END; `--end` does the reverse. Mapped onto a
+				   screen edge that is: pin LEFT and grow right when the
+				   two agree (LTR --start, RTL --end), pin RIGHT and grow
+				   left otherwise. The room is then the distance from the
+				   pinned edge to the viewport edge on the side it grows
+				   INTO - which is why the physical read has to be chosen
+				   by direction rather than fixed. */
+				if (pinnedEnd === rtl) {
+					/* pinned to the physical LEFT edge, growing right */
 					room = vw - tr.left - gutter;
+				} else if (pinnedEnd || rtl) {
+					/* pinned to the physical RIGHT edge, growing left */
+					room = tr.right - gutter;
 				} else {
 					// A CENTRED tip hangs half its width either side of the
 					// trigger, so the room is twice the NARROWER side —
@@ -1647,7 +1752,18 @@
 		// It also steps out of a submenu when focus is INSIDE it, which is
 		// the only way back for a reader who walked in.
 		if (e.key === 'ArrowLeft') {
-			if (closeSubmenu(t.closest(POP_SEL))) e.preventDefault();
+			var here = t.closest(POP_SEL);
+			/* One exception, and it belongs to the MENUBAR: a panel that
+			   hangs off the bar does not eat Left. There the bar owns the
+			   key and walks to the neighbouring word - the pattern's rule,
+			   and what the specimen documents - and since onMenubarKey now
+			   stands down for a key someone already consumed, a panel that
+			   swallowed this one would turn "walk to the previous menu"
+			   into "close, then press again". A SUBMENU inside that panel
+			   still takes the key: stepping out is the only way back. */
+			if (here && here.classList && here.classList.contains('cm-menubar__menu') &&
+				!here.querySelector('[popover]:popover-open')) return;
+			if (closeSubmenu(here)) e.preventDefault();
 			return;
 		}
 		// Space/Enter flip a checkbox row. Enter already activates the button;
@@ -2350,13 +2466,87 @@
 	   dropdowns in a row, and it is why the handler looks at the menu you
 	   are in before it looks at the trigger you are on. */
 	function menubarTriggers(bar) {
+		// The WALK list: words that can take focus at all. A disabled word
+		// is filtered HERE and not in each door, so every door - arrows,
+		// Home/End, the roving stop - inherits one invariant, exactly as
+		// selectTab() does for the tabs.
 		return Array.prototype.filter.call(
 			bar.querySelectorAll('.cm-menubar__trigger'),
-			function (b) { return b.offsetParent !== null; }
+			function (b) {
+				return b.offsetParent !== null &&
+					b.getAttribute('aria-disabled') !== 'true';
+			}
 		);
 	}
 
+	/* ONE tab stop. The bar ENTERS the page as a single stop and the arrows
+	   walk the words from there - the .cm-tabs rule, applied to the other
+	   component that needs it. Every trigger at tabindex=0 makes Tab walk
+	   file/edit/view before it reaches anything else, which is exactly the
+	   thing the pattern exists to prevent. The stop is WRITTEN, never read
+	   from the author: whoever authored tabindex on three buttons gets one
+	   tabbable word and two arrow targets. */
+	function menubarRove(bar, cur) {
+		Array.prototype.forEach.call(
+			bar.querySelectorAll('.cm-menubar__trigger'),
+			function (t) {
+				t.setAttribute('tabindex', t === cur ? '0' : '-1');
+			}
+		);
+	}
+	/* Which word holds the stop: the one focus is already on, else the first
+	   one a reader can reach. */
+	function menubarTabStop(bar) {
+		var list = menubarTriggers(bar);
+		if (!list.length) return;
+		var focused = document.activeElement;
+		menubarRove(bar, list.indexOf(focused) !== -1 ? focused : list[0]);
+	}
+	function initMenubar(root) {
+		(root || document).querySelectorAll('[data-cm-menubar]').forEach(function (bar) {
+			if (bar.dataset.cmMenubarBound) return;
+			bar.dataset.cmMenubarBound = '1';
+			menubarTabStop(bar);
+			// Clicking (or Tabbing ONTO) a word moves the stop with it: a
+			// stop left behind on the first word means the NEXT Tab leaves
+			// the bar at a word the reader is no longer looking at. The
+			// disabled word is excepted - it is not in the walk list, so a
+			// stop parked there would hand the bar a tab stop the arrows
+			// can never come back to (measured in WebKit: focus() on the
+			// disabled word was enough to move it there).
+			bar.addEventListener('focusin', function (ev) {
+				var t = ev.target;
+				var trg = t && typeof t.closest === 'function'
+					? t.closest('.cm-menubar__trigger') : null;
+				if (trg && trg.getAttribute('aria-disabled') !== 'true') menubarRove(bar, trg);
+			});
+			/* The disabled word's two other doors. popovertarget is a
+			   PLATFORM attribute with no idea what aria-disabled means, so
+			   Enter and Space arrive here as a click and would open the
+			   panel - and the mousedown veto is what keeps focus from
+			   landing on a word the arrows can never come back to (a
+			   native [disabled] button does not take focus either). */
+			var vetoDisabled = function (ev) {
+				var t = ev.target;
+				var d = t && typeof t.closest === 'function'
+					? t.closest('.cm-menubar__trigger[aria-disabled="true"]') : null;
+				if (!d) return;
+				ev.preventDefault();
+			};
+			bar.addEventListener('mousedown', vetoDisabled);
+			bar.addEventListener('click', vetoDisabled);
+		});
+	}
+
 	function onMenubarKey(e) {
+		/* A key the PANEL already handled is not the bar's. onMenuKey is
+		   registered first and preventDefaults when it moved an item,
+		   opened a submenu or closed one; without this the bar answers
+		   the SAME press a second time. Measured in WebKit: Right on the
+		   `export` row opened the submenu and then - one press, two
+		   moves - walked to the next word, taking the submenu it had
+		   just opened with it. */
+		if (e.defaultPrevented) return;
 		var bar = e.target && e.target.closest && e.target.closest('[data-cm-menubar]');
 		if (!bar) return;
 		var trg = e.target.closest('.cm-menubar__trigger');
@@ -2364,16 +2554,30 @@
 		// [popovertarget]); ArrowDown is the key the platform does NOT map
 		// to "open", and it is the one readers reach for.
 		if (trg && e.key === 'ArrowDown') {
+			e.preventDefault();
+			// A disabled word never opens. aria-disabled is not [disabled]:
+			// the row stays in the accessibility tree so a reader knows help
+			// is there, which means the attribute - not markup - has to be
+			// what refuses. Enter/Space arrive as a click instead, and that
+			// door is the veto bound in initMenubar().
+			if (trg.getAttribute('aria-disabled') === 'true') return;
 			var oid = trg.getAttribute('popovertarget');
 			var om = oid && document.getElementById(oid);
 			if (om && typeof om.showPopover === 'function' && !om.matches(':popover-open')) om.showPopover();
-			e.preventDefault();
 			return;
 		}
 		if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(e.key) === -1) return;
 		var list = menubarTriggers(bar);
 		if (!list.length) return;
 		var open = e.target.closest('.cm-menubar__menu');
+		/* A key inside a NESTED panel belongs to that panel, not to the bar:
+		   Left closes the submenu (closeSubmenu() has already handled it
+		   and preventDefault'd), and Right walks the submenu's own rows.
+		   Without this the bar would step to the next word with a panel
+		   still open underneath - one press, two moves, and the submenu it
+		   never looked at left hanging in the top layer. */
+		var nested = e.target.closest('[popover]');
+		if (nested && nested !== open) return;
 		var cur = open
 			? popTrigger(open) || trg
 			: trg;
@@ -2385,7 +2589,21 @@
 		else next = list[(i + (e.key === 'ArrowLeft' ? -1 : 1) + list.length) % list.length];
 		if (!next || next === cur) return;
 		e.preventDefault();
-		if (open && typeof open.hidePopover === 'function') open.hidePopover();
+		/* The panel walks away and takes its SUBMENUS with it: a nested
+		   popover is its own top-layer box, so hiding the host leaves it
+		   open over a menu that is gone. Deepest first, the order
+		   closeSubmenu() steps out in - and before the host, so focus
+		   unwinds to the owner row while that row still has a panel. */
+		if (open) {
+			Array.prototype.forEach.call(
+				open.querySelectorAll('[popover]:popover-open'),
+				function (s) { if (typeof s.hidePopover === 'function') s.hidePopover(); }
+			);
+			if (typeof open.hidePopover === 'function') open.hidePopover();
+		}
+		// The stop MOVES with the focus, or the next Tab leaves the bar at
+		// the word the reader just walked away from.
+		menubarRove(bar, next);
 		// Focus BEFORE opening: the toggle handler moves focus into the
 		// panel, and doing it in the other order would leave the new
 		// trigger focused while the panel's own focus steal is still to
@@ -2497,16 +2715,48 @@
 	}
 	function calMode(cal) { return cal.getAttribute('data-cm-cal-mode') || 'single'; }
 
+	/* Multiple mode's state is a SET, and it is round-tripped through ONE
+	   space-separated attribute. The alternative - a data-cm-cal-selected
+	   stamped on each chosen day - puts the truth in the RENDERED grid,
+	   which calRender rebuilds wholesale on every pick and on every month
+	   step, so paging away and back would silently drop the selection.
+	   The invariant this buys: after calRender the markup and the
+	   attribute agree, the same way single/range already hold theirs.
+	   Normalised on READ (whitespace, duplicates) so a hand-authored
+	   specimen and a runtime write are indistinguishable to the picker. */
+	function calList(cal) {
+		var raw = (cal.getAttribute('data-cm-cal-selected') || '').split(/\s+/).filter(Boolean);
+		var out = [];
+		raw.forEach(function (d) { if (out.indexOf(d) === -1) out.push(d); });
+		return out.sort();
+	}
+	function calSet(cal, list) {
+		if (list.length) cal.setAttribute('data-cm-cal-selected', list.join(' '));
+		else cal.removeAttribute('data-cm-cal-selected');
+	}
+
 	function calRender(cal, focusIso) {
 		var month = cal.getAttribute('data-cm-cal-month');
 		if (!month) return;
 		var mode = calMode(cal);
-		var sel = cal.getAttribute('data-cm-cal-selected');
+		// In multiple mode `sel` would be the WHOLE "2026-10-05 2026-10-27"
+		// string, and the roving tab stop is `active === day` - nothing
+		// would ever match, so the grid would lose its tab stop entirely.
+		// Null it and let picked[0] carry the stop instead.
+		var sel = mode === 'multiple' ? null : cal.getAttribute('data-cm-cal-selected');
 		var start = cal.getAttribute('data-cm-cal-start');
 		var end = cal.getAttribute('data-cm-cal-end');
 		var today = calIso(calToday());
+		// multiple keeps its set on the SAME attribute single uses - as a
+		// space-separated list - so `data-cm-cal-selected` means "what is
+		// selected" in every mode and nothing new has to be documented.
+		var picked = mode === 'multiple' ? calList(cal) : [];
 		var off = calDisabled(cal);
-		var active = focusIso || sel || start || today;
+		// Only ONE of sel/picked is ever populated, so the fallback chain
+		// stays a single expression: the roving tab stop lands on this
+		// month's first picked day when there is one, exactly as it lands
+		// on the single selection or the range start in the other modes.
+		var active = focusIso || sel || picked[0] || start || today;
 		if (active.slice(0, 7) !== month) active = month + '-01';
 		// Cells first, rows second: a </tr> opened inside a running
 		// string and stripped again with a regex is a shape nobody can
@@ -2518,13 +2768,17 @@
 			if (day.slice(0, 7) !== month) attrs += ' data-outside';
 			if (off.indexOf(day) !== -1) attrs += ' aria-disabled="true"';
 			if (day === today) attrs += ' aria-current="date"';
-			var isSel = mode === 'single'
-				? day === sel
-				: (day === start || day === end);
+			// `mode === 'single'` is the wrong question once there are
+			// three modes: it sent multiple down the RANGE branch, where
+			// `sel` is empty and nothing could ever appear selected. Ask
+			// for range instead - the mode that actually reads start/end.
+			var isSel = mode === 'range'
+				? (day === start || day === end)
+				: (mode === 'multiple' ? picked.indexOf(day) !== -1 : day === sel);
 			if (isSel) attrs += ' aria-selected="true"';
 			if (start && end && start < day && day < end) attrs += ' data-in-range="true"';
 			cells.push('<td role="gridcell"><button type="button" class="cm-cal__day"' +
-				attrs + ' tabindex="' + (day === active ? 0 : -1) + '">' +
+				attrs + ' tabindex="' + (active === day ? 0 : -1) + '">' +
 				+day.slice(8) + '</button></td>');
 		});
 		var html = '';
@@ -2555,6 +2809,16 @@
 			} else {
 				cal.setAttribute('data-cm-cal-selected', iso);
 			}
+		} else if (calMode(cal) === 'multiple') {
+			// A TOGGLE, like single: a second press on a chosen day
+			// removes it. rdp's multiple mode is a set of independent
+			// days, not a progression, so there is no "first/second"
+			// gesture to re-anchor the way range has.
+			var set = calList(cal);
+			var at = set.indexOf(iso);
+			if (at === -1) set.push(iso);
+			else set.splice(at, 1);
+			calSet(cal, set.sort());
 		} else {
 			var start = cal.getAttribute('data-cm-cal-start');
 			var end = cal.getAttribute('data-cm-cal-end');
@@ -2583,7 +2847,7 @@
 		// keeps the panel open. Range mode is left alone: it has no single
 		// selected day to write.
 		var dp = cal.closest('.cm-datepicker');
-		if (dp && cal.getAttribute('data-cm-cal-mode') !== 'range') {
+		if (dp && calMode(cal) === 'single') {
 			var dpInput = dp.querySelector('input');
 			if (dpInput) dpInput.value = cal.getAttribute('data-cm-cal-selected') || '';
 			var dpPanel = dp.querySelector('[popover]');
@@ -2629,6 +2893,7 @@
 		else if (e.key === 'Escape') {
 			e.preventDefault();
 			if (calMode(cal) === 'single') cal.removeAttribute('data-cm-cal-selected');
+			else if (calMode(cal) === 'multiple') calSet(cal, []);
 			else {
 				cal.removeAttribute('data-cm-cal-start');
 				cal.removeAttribute('data-cm-cal-end');
@@ -2659,7 +2924,7 @@
 		if (!cal) return;
 		var day = e.target.closest && e.target.closest('.cm-cal__day');
 		calClearPreview(cal);
-		if (!day || calMode(cal) === 'single') return;
+		if (!day || calMode(cal) !== 'range') return;
 		var start = cal.getAttribute('data-cm-cal-start');
 		if (!start || cal.getAttribute('data-cm-cal-end')) return;
 		var iso = day.getAttribute('data-cm-day');
@@ -3417,6 +3682,169 @@
 		});
 	}
 
+	/* ---------- mention typeahead ----------
+	   An @-autocomplete inside a field the reader is ALREADY typing in.
+	   The combobox above is the other shape: a standalone input whose
+	   value is the whole answer. Here the field is a message, the list
+	   completes ONE token inside it, and the key that commits a mention is
+	   the key the FIELD'S OWN behaviour already wants for itself.
+
+	   So this handler takes a key ONLY while the list is open, and hands
+	   it straight back the moment the list closes. That is the whole
+	   contract, and it is what stops a typeahead from breaking the send
+	   key for the rest of the session - the failure a consumer reports as
+	   "the message box stopped working".
+
+	   Scope: `[data-cm-mention]` is the anchor, `data-cm-mention-source`
+	   names the field (defaulting to the first textarea/input inside it),
+	   and the list is the `.cm-mention` in that anchor. The roster is the
+	   consumer's - it re-renders the `<li>`s and calls init() again, so
+	   every listener here hangs off the ANCHOR and the FIELD, never off
+	   a row, and a re-render of the rows costs no re-bind.
+
+	   `cm:mention` fires on the anchor when a name is taken, carrying
+	   the chosen value, so a consumer that owns its own state can ignore
+	   the DOM write entirely and listen for that. */
+	function cmInitMentions(root) {
+		var scope = root && root.querySelectorAll ? root : document;
+		Array.prototype.forEach.call(scope.querySelectorAll('[data-cm-mention]'), function (anchor) {
+			if (anchor.dataset.cmMentionBound) return;
+			anchor.dataset.cmMentionBound = '1';
+			var srcId = anchor.getAttribute('data-cm-mention-source');
+			var field = srcId ? document.getElementById(srcId) : anchor.querySelector('textarea, input');
+			var list = anchor.querySelector('.cm-mention');
+			if (!field || !list) return;
+			/* The token the list is completing: the `@` and everything
+			   after it, back to the nearest whitespace or the start. */
+			var TOKEN = /(^|\s)@([A-Za-z0-9_-]*)$/;
+			var queryAt = -1;
+			var queryLen = 0;
+			function options() {
+				return Array.prototype.slice.call(list.querySelectorAll('.cm-mention__option'));
+			}
+			function visible() {
+				return options().filter(function (o) { return !o.hidden; });
+			}
+			function setOpen(v) {
+				list.hidden = !v;
+				field.setAttribute('aria-expanded', v ? 'true' : 'false');
+				if (!v) setActive(null);
+			}
+			function setActive(el) {
+				options().forEach(function (o) {
+					var on = o === el;
+					o.classList.toggle('is-active', on);
+					/* `aria-selected` is the state the listbox pattern
+					   publishes, and the paint follows the SAME attribute
+					   so the accessibility tree and the pixels cannot
+					   disagree. */
+					o.setAttribute('aria-selected', on ? 'true' : 'false');
+				});
+				if (el && el.id) field.setAttribute('aria-activedescendant', el.id);
+				else field.removeAttribute('aria-activedescendant');
+			}
+			/* Read the caret, and only the text BEFORE it: an `@name` the
+			   reader has already typed past must not reopen the list when
+			   they type a space at the end of the line. */
+			function readToken() {
+				var pos = field.selectionStart;
+				if (typeof pos !== 'number') return null;
+				var m = TOKEN.exec(field.value.slice(0, pos));
+				if (!m) return null;
+				queryAt = pos - m[2].length - 1;
+				queryLen = m[2].length;
+				return m[2].toLowerCase();
+			}
+			function filter() {
+				var q = readToken();
+				if (q === null) { setOpen(false); return; }
+				var shown = 0;
+				options().forEach(function (o) {
+					var name = o.getAttribute('data-cm-mention-value') || o.textContent;
+					var hit = !q || name.trim().toLowerCase().indexOf(q) !== -1;
+					o.hidden = !hit;
+					if (hit) shown++;
+				});
+				if (!shown) { setOpen(false); return; }
+				setOpen(true);
+				setActive(visible()[0]);
+			}
+			/* The name, not the row: a row carries a hint beside the name
+			   (`@alex  idle 3m`), and writing the row into the message is
+			   how a hand-rolled version sends "alex idle 3m" as a mention. */
+			function mentionName(o) {
+				var v = o.getAttribute('data-cm-mention-value');
+				if (v) return v;
+				var name = o.querySelector('.cm-mention__name');
+				return (name ? name.textContent : o.textContent).trim();
+			}
+			function choose(o) {
+				var name = mentionName(o);
+				var before = field.value.slice(0, queryAt);
+				var after = field.value.slice(queryAt + queryLen + 1);
+				field.value = before + '@' + name + after;
+				var caret = before.length + name.length + 1;
+				/* WebKit moves the caret to the end on a programmatic value
+				   write, so setting it is not optional: without this the
+				   reader's next keystroke lands after the rest of the
+				   message instead of where they were typing. */
+				if (typeof field.setSelectionRange === 'function') {
+					field.setSelectionRange(caret, caret);
+				}
+				setOpen(false);
+				field.focus();
+				if (typeof CustomEvent === 'function') {
+					anchor.dispatchEvent(new CustomEvent('cm:mention', {
+						bubbles: true, detail: { value: name }
+					}));
+				}
+			}
+			field.addEventListener('input', filter);
+			field.addEventListener('click', function () { if (list.hidden) filter(); });
+			field.addEventListener('keydown', function (e) {
+				var vis = visible();
+				/* NOTHING is taken while the list is closed. Enter belongs
+				   to the consumer's send path, and Escape to whatever else
+				   the reader has open. */
+				if (list.hidden) {
+					if (e.key === 'ArrowUp' || e.key === 'ArrowDown') filter();
+					return;
+				}
+				if (e.key === 'Escape') { setOpen(false); e.preventDefault(); return; }
+				if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+					vis = visible();
+					if (!vis.length) return;
+					var cur = vis.filter(function (o) { return o.classList.contains('is-active'); })[0];
+					var i = vis.indexOf(cur);
+					var next = e.key === 'ArrowDown'
+						? vis[(i + 1) % vis.length]
+						: vis[(i - 1 + vis.length) % vis.length];
+					setActive(next);
+					e.preventDefault();
+					return;
+				}
+				if (e.key === 'Enter' || e.key === 'Tab') {
+					var active = visible().filter(function (o) { return o.classList.contains('is-active'); })[0];
+					if (active) { choose(active); e.preventDefault(); }
+				}
+			});
+			/* Rows are DELEGATED off the anchor: a consumer re-rendering
+			   its roster replaces every `<li>`, which takes a per-row
+			   binding with it. `pointerdown` would fight the field's own
+			   blur, so this is a click. */
+			anchor.addEventListener('click', function (e) {
+				var t = e.target;
+				if (!t || typeof t.closest !== 'function') return;
+				var o = t.closest('.cm-mention__option');
+				if (o && list.contains(o)) { choose(o); e.preventDefault(); }
+			});
+			document.addEventListener('click', function (e) {
+				if (!anchor.contains(e.target)) setOpen(false);
+			});
+			setOpen(false);
+		});
+	}
+
 	/* ---------- drawer: the bottom sheet you can PULL DOWN ----------
 	   Everything structural belongs to the sheet below it - showModal()
 	   gives the trap, Escape, the top layer and focus restore, so this
@@ -3649,12 +4077,44 @@
 					}
 					markAnchor();
 				}
+				// The live edge, as a reusable promise. A single
+				// `scrollTo({top: scrollHeight})` reads its target ONCE, from a
+				// `scrollHeight` that is still growing while content-visibility
+				// rows resolve their intrinsic size -- so the jump lands SHORT of
+				// the newest message, and a smooth one is worse because it commits
+				// to the stale target for the whole animation. Re-pin on every
+				// frame for a bounded window instead; any scroll we did not ask
+				// for is the reader, and the loop stands down for them.
+				var edgePin = { frames: 0, asked: 0, moved: false, on: false };
+				vp.addEventListener('scroll', function () {
+					if (edgePin.on && Math.abs(vp.scrollTop - edgePin.asked) > 2) {
+						edgePin.moved = true;
+					}
+				}, { passive: true });
+				function pinToEdge() {
+					edgePin.moved = false;
+					edgePin.frames = 120;
+					if (edgePin.on) return;
+					edgePin.on = true;
+					function step() {
+						if (edgePin.moved || edgePin.frames <= 0) {
+							edgePin.on = false;
+							paint();
+							return;
+						}
+						vp.scrollTop = vp.scrollHeight;
+						edgePin.asked = vp.scrollTop;
+						edgePin.frames--;
+						requestAnimationFrame(step);
+					}
+					requestAnimationFrame(step);
+				}
 				function scrollToStart(smooth) {
 					vp.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
 				}
-				function scrollToEnd(smooth) {
-					vp.scrollTo({ top: vp.scrollHeight,
-						behavior: smooth ? 'smooth' : 'auto' });
+				function scrollToEnd() {
+					vp.scrollTop = vp.scrollHeight;
+					pinToEdge();
 				}
 				function scrollToMessage(id) {
 					var row = content
@@ -3670,7 +4130,7 @@
 				frame.__scroller = {
 					scrollToMessage: scrollToMessage,
 					scrollToStart: function () { scrollToStart(true); },
-					scrollToEnd: function () { scrollToEnd(true); },
+					scrollToEnd: function () { scrollToEnd(); },
 					atStart: atStart,
 					atEnd: atEnd
 				};
@@ -3679,10 +4139,10 @@
 					scrollToStart(true);
 				});
 				if (btnEnd) btnEnd.addEventListener('click', function () {
-					scrollToEnd(true);
+					scrollToEnd();
 				});
 				if (pill) pill.addEventListener('click', function () {
-					scrollToEnd(true);
+					scrollToEnd();
 				});
 				frame.addEventListener('click', function (e) {
 					var jump = e.target.closest ? e.target.closest('[data-jump-to]') : null;
@@ -3726,24 +4186,7 @@
 				// no flash on load: open at the live edge when asked
 				if (frame.hasAttribute('data-start-at-end')) {
 					vp.scrollTop = vp.scrollHeight;
-					// content-visibility rows keep resizing their intrinsic size
-					// for a few frames after bind, which would strand the
-					// position mid-log. Re-pin every frame for a bounded
-					// window; any scroll we did not ask for is the reader,
-					// and the loop stands down for them.
-					var pinFrames = 0;
-					var asked = vp.scrollTop;
-					var readerMoved = false;
-					var pinEdge = function () {
-						if (readerMoved) return;
-						vp.scrollTop = vp.scrollHeight;
-						asked = vp.scrollTop;
-						if (++pinFrames < 120) requestAnimationFrame(pinEdge);
-					};
-					vp.addEventListener('scroll', function () {
-						if (Math.abs(vp.scrollTop - asked) > 2) readerMoved = true;
-					}, { passive: true });
-					requestAnimationFrame(pinEdge);
+					pinToEdge();
 				}
 				paint();
 			})(frames[i]);
@@ -3995,9 +4438,17 @@
 		syncToggles();
 		initHeader(document.querySelector('[data-cm-header]'));
 		initNavToggle(root);
+		/* The spy is generic over whatever `[data-cm-spy]` rows it is handed,
+		   so the docs TOC gets highlighting from the same pass as the rail -
+		   no second implementation, and no second set of scroll listeners.
+		   Both hooks are bound here because both are rendered: the page emits
+		   `[data-cm-nav]` on the rail always, and `[data-cm-toc]` on the
+		   family routes, where the rail cannot list the local sections. */
 		initScrollSpy(document.querySelector('[data-cm-nav]'));
+		initScrollSpy(document.querySelector('[data-cm-toc]'));
 		initCopy(root);
 		initTabs(root);
+		initMenubar(root);
 		initDialogs(root);
 		initToasts(root);
 		initTooltipClamp(root);
@@ -4019,11 +4470,13 @@
 		cmInitShortcuts();
 		cmInitSliders(root);
 		cmInitComboboxes(root);
+		cmInitMentions(root);
 		cmInitCarousels(root);
 		cmInitSteppers(root);
 		cmInitOtp(root);
 		cmInitCommand(root);
 		cmInitNavmenu(root);
+		cmInitCharts(root);
 		if (!root || root === document) initExternalLinks();
 	}
 
@@ -4531,6 +4984,916 @@
 		cmColvisApply(item);
 	}
 
+	/* ============================================================
+	   charts - hand-rolled SVG, zero dependencies.
+
+	   shadcn's Chart is a thin wrapper over Recharts, so "parity"
+	   here means its DOCUMENTED BEHAVIOUR and VISUAL FEATURES and
+	   not its prop names: six types, a container that owns the
+	   layout, a cartesian grid, axes, a tooltip layer, a legend,
+	   per-series colour resolved through CSS custom properties, and
+	   a text alternative for every chart. Recharts' own API -
+	   composed elements, animation toggles, ResponsiveContainer,
+	   syncId - is deliberately NOT reproduced. Matching THAT is not
+	   a feature, it is a dependency, and this library has none.
+
+	   The geometry is written here rather than delegated: the tick
+	   math, the path strings, the pie arcs, the radar polygon, the
+	   radial arcs and the pointer hit test are all arithmetic, and
+	   every colour they paint resolves through a token, so a
+	   light-theme chart is not a second dark chart.
+
+	   Two decisions decide the rest:
+
+	   1. SHARP. A bar is a <rect>, a slice is an arc between two
+	      radii, and nothing here rounds a corner - a rounded bar
+	      would be the first thing in this library to invent a radius
+	      the tokens do not sanction.
+	   2. THE TABLE IS THE DATA. Every chart ships a visually
+	      hidden <table> of its own numbers, and the runtime reads
+	      THAT to rebuild the geometry at the measured width and to
+	      fill the tooltip. One source of truth, so the accessible
+	      fallback cannot drift from the drawing - it is the
+	      drawing's input.
+
+	   The axis arithmetic is the part worth stating: a y scale is
+	   0 to `nice(max / ticks)`, where nice() snaps the raw step to
+	   1, 2, 2.5 or 5 times a power of ten, so the top gridline is
+	   always a round number and never the tallest column.
+	   ============================================================ */
+
+	/* Five tones, because --chart-c1..5 are five: a sixth series wraps
+	   to c1, and a legend that shows c1 twice is honest about it. A
+	   sixth grey would not be - it could not clear 3:1 on the surface
+	   it is drawn on, which is the WCAG figure for a non-text mark. */
+	var CHART_TONES = 5;
+
+	function chEsc(s) {
+		return String(s == null ? '' : s)
+			.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	}
+	/* A chart's numbers arrive as TEXT from two places - the hidden
+	   table the runtime re-renders from, and the consumer's config - and
+	   the table is grouped: "1,860" is the number 1860, and parseFloat
+	   stops at the first comma and returns 1. MEASURED: with the table
+	   as the only source, every value at or above 1000 in the line
+	   specimen re-rendered as 1, the y axis climbed to 1k off a peak of
+	   1, and the pie's first two arcs collapsed to 0.34 degrees each -
+	   a chart that drew correctly, then redrew itself as nonsense the
+	   moment the ResizeObserver fired. So the separator is removed
+	   before parsing, and a k suffix is expanded, because the axis
+	   format that prints "1k" is the only place a k can come from. */
+	function chNum(v) {
+		if (typeof v === 'number') return isFinite(v) ? v : 0;
+		var t = String(v == null ? '' : v).trim().replace(/,/g, '');
+		var k = /k$/i.test(t);
+		if (k) t = t.slice(0, -1);
+		var n = parseFloat(t);
+		if (!isFinite(n)) return 0;
+		return k ? n * 1000 : n;
+	}
+	function chText(el) {
+		return el ? String(el.textContent || '').trim() : '';
+	}
+	/* Thousands get a k, everything else stays exact. A chart that
+	   rounds 1,860 to "2k" is a chart that misreads its own axis. */
+	function chFmt(v) {
+		var n = chNum(v), a = n < 0 ? -n : n;
+		/* Beyond a million the k suffix stops being a readable label:
+		   a value of 1e21 printed as "1000000000000000000k", which is
+		   the raw number with two characters stapled on. M is the same
+		   ladder one rung up, so the axis keeps reading as a quantity
+		   rather than as its own digits. */
+		if (a >= 1e6) {
+			var m = Math.round(n / 1e5) / 10;
+			return (m % 1 === 0 ? m : m.toFixed(1)) + 'M';
+		}
+		if (a >= 1000) {
+			var k = Math.round(n / 100) / 10;
+			return (k % 1 === 0 ? k : k.toFixed(1)) + 'k';
+		}
+		return String(Math.round(n * 100) / 100);
+	}
+	/* The EXACT value, grouped. This is a different formatter from
+	   chFmt on purpose: an axis label is read at a glance next to its
+	   neighbours and "6k" is the right answer there, but a tooltip and
+	   a data table are where a reader comes to get the FIGURE. Measured
+	   on this page's own specimen: the tooltip said "1.9k" about the
+	   month whose row reads 1,860 four inches below it. Two numbers for
+	   one value on one card, and the rounded one is the one the reader
+	   is holding. */
+	function chExact(v) {
+		var n = chNum(v);
+		var neg = n < 0 ? '-' : '';
+		var a = Math.abs(n);
+		/* String() hands back exponential notation past 1e21, and
+		   grouping a mantissa is how "1e+21" becomes a table cell
+		   reading "1e,+21". Past that magnitude the exact digits are
+		   not the point, so a fixed expansion keeps the cell a number. */
+		var s = a >= 1e21 ? a.toFixed(0) : String(Math.round(a * 1000) / 1000);
+		var parts = s.split('.');
+		parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+		return neg + parts.join('.');
+	}
+	/* The nice-number ladder. 2.5 is in there because a step of 2.5
+	   gives four gridlines over 0-10 where a step of 2 gives five -
+	   and five labels on a phone chart is four too many. */
+	function chNice(max, count) {
+		count = count || 4;
+		if (!(max > 0)) return { max: 1, step: 1 };
+		var raw = max / count;
+		var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+		var n = raw / mag;
+		var step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+		/* Math.ceil(max / step) * step is exact for a whole-number step
+		   and drifts for a fractional one: a max of 0.5 with a 0.2 step
+		   lands on 0.6000000000000001, and that string is what the axis
+		   max is then measured and printed against. Ceiling to a whole
+		   number of steps first and rounding the product keeps the same
+		   top tick without the float noise. */
+		var steps = Math.ceil(+(max / step).toFixed(6));
+		return { max: +(steps * step).toPrecision(12), step: step };
+	}
+	function chIdent(s) {
+		return String(s || 'k').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'k';
+	}
+	function chDir(explicit, box) {
+		/* `explicit` is the `dir` ATTRIBUTE read off the chart's own
+		   markup, so an author can pin one chart RTL inside an LTR page
+		   (and pin it back) without touching the document. When it is
+		   absent the RENDERED direction is asked for instead of
+		   `document.dir`, because a chart inside an RTL subtree of an
+		   LTR document inherits `ltr` from the document while actually
+		   laying out right to left - the one case a document-level read
+		   gets wrong. `getComputedStyle().direction` is the rendered
+		   answer, and it is a READ, not a written declaration, so the
+		   Direction baseline stays intact. */
+		if (explicit === 'rtl') return true;
+		if (explicit === 'ltr') return false;
+		try {
+			return !!(box && box.ownerDocument && box.ownerDocument.defaultView &&
+				box.ownerDocument.defaultView.getComputedStyle(box).direction === 'rtl');
+		} catch (e) { return false; }
+	}
+	function chSeries(cfg) {
+		return (cfg.series || []).map(function (s, i) {
+			var tone = Math.round(chNum(s.tone) || i + 1);
+			return {
+				key: s.key,
+				label: s.label == null ? s.key : s.label,
+				tone: ((tone - 1) % CHART_TONES + CHART_TONES) % CHART_TONES + 1
+			};
+		});
+	}
+	/* The ChartStyle pass-through, in the house idiom. shadcn emits a
+	   <style> block of custom properties so a series colour reaches the
+	   SVG through CSS - presentation ATTRIBUTES cannot take a var(), so
+	   the only honest way to let a token paint a <stop> or a <path> is a
+	   rule that names it. Here the block also rewrites each fill to
+	   url(#uid-g-key), which is the gradient-id mechanism the gradient
+	   needs and the reason two charts on one page cannot collide. */
+	function chStyle(uid, ser) {
+		var out = [];
+		var decls = ser.map(function (s) {
+			return '--cm-chart-' + chIdent(s.key) + ':var(--chart-c' + s.tone + ')';
+		}).join(';');
+		out.push('#' + uid + '{' + decls + '}');
+		ser.forEach(function (s) {
+			var k = chIdent(s.key), v = 'var(--cm-chart-' + k + ')';
+			var sel = '[data-cm-k="' + s.key + '"]';
+			out.push('#' + uid + ' .cm-chart__line' + sel + '{stroke:' + v + '}');
+			out.push('#' + uid + ' .cm-chart__area' + sel + '{fill:url(#' + uid + '-g-' + k + ')}');
+			out.push('#' + uid + ' .cm-chart__stop' + sel + '[data-cm-stop="top"]{stop-color:' + v + ';stop-opacity:.42}');
+			out.push('#' + uid + ' .cm-chart__stop' + sel + '[data-cm-stop="base"]{stop-color:' + v + ';stop-opacity:.06}');
+			out.push('#' + uid + ' .cm-chart__bar' + sel + '{fill:' + v + '}');
+			out.push('#' + uid + ' .cm-chart__slice' + sel + '{fill:' + v + '}');
+			out.push('#' + uid + ' .cm-chart__radar' + sel + '{fill:color-mix(in srgb,' + v + ' 16%,transparent);stroke:' + v + '}');
+			out.push('#' + uid + ' .cm-chart__marker' + sel + '{stroke:' + v + '}');
+			out.push('#' + uid + ' .cm-chart__tip-dot' + sel + ',#' + uid + ' .cm-chart__legend-dot' + sel + '{background:' + v + '}');
+		});
+		return out.join('\n');
+	}
+
+	function chTipMarkup(cfg, ser) {
+		/* shadcn's TOOLTIP PROPS, on the same five data attributes the
+		   rest of the chart uses. Each one is OFF unless the markup asks
+		   for it, so every existing chart renders byte-identically.
+
+		     labelKey      which column is the tooltip's TITLE. Here the
+		                   title is the x value, which is what a cartesian
+		                   row already carries, so the default is the x
+		                   key and `none` suppresses the title line.
+		     hideLabel     drop the series NAME from each row (the number
+		                   and the indicator stay - this is what you want
+		                   when a chart has one series).
+		     hideIndicator drop the coloured dot; the row keeps its
+		                   name and value.
+		     indicator     dot | line | dashed. The shape is a class on
+		                   the indicator, not a new element, so the
+		                   per-series colour rule (which selects
+		                   `.cm-chart__tip-dot[data-cm-k=...]`) keeps
+		                   working untouched.
+		     nameKey       which per-series field is the displayed NAME.
+		                   shadcn reads `label` from the config, we read
+		                   it from `data-cm-label`, and that IS the
+		                   nameKey: setting it is a no-op restatement,
+		                   kept so the prop surface reads the same.
+
+		   The four that change OUTPUT are honoured here, at markup
+		   time, and the values are written at hover time by the same
+		   code that always wrote them - so there is no second path to
+		   keep in sync. */
+		var ind = cfg.indicator || 'dot';
+		var hideInd = cfg.hideIndicator ? ' cm-chart__tip-row--no-indicator' : '';
+		var hideName = cfg.hideLabel ? ' cm-chart__tip-row--no-name' : '';
+		var titleEl = (cfg.labelKey === 'none' || cfg.hideTooltipLabel)
+			? '' : '<p class="cm-chart__tip-title"></p>';
+		var rows = ser.map(function (s) {
+			return '<div class="cm-chart__tip-row' + hideInd + hideName + '">' +
+				'<span class="cm-chart__tip-dot cm-chart__tip-dot--' + chEsc(ind) +
+				'" data-cm-k="' + chEsc(s.key) + '"></span>' +
+				'<span class="cm-chart__tip-name">' + chEsc(s.label) + '</span>' +
+				'<span class="cm-chart__tip-val">0</span></div>';
+		}).join('');
+		return '<div class="cm-chart__tooltip" data-cm-chart-tip role="status" aria-live="polite">' +
+			titleEl + rows + '</div>';
+	}
+	function chHead(uid, cfg) {
+		return '<title id="' + uid + '-title">' + chEsc(cfg.title || 'chart') + '</title>' +
+			'<desc id="' + uid + '-desc">' + chEsc(cfg.description || cfg.title || 'chart') + '</desc>';
+	}
+
+	/* ---------------- cartesian: line, area, bar ---------------- */
+
+	function chCart(cfg, w, h, uid) {
+		var rows = cfg.data || [], ser = chSeries(cfg);
+		var stacked = !!cfg.stacked, n = rows.length;
+		var peak = 0;
+		rows.forEach(function (r) {
+			var sum = 0, top = 0;
+			ser.forEach(function (s) {
+				var v = chNum(r[s.key]);
+				sum += v;
+				if (v > top) top = v;
+			});
+			var used = stacked ? sum : top;
+			if (used > peak) peak = used;
+		});
+		/* The 1.02 is the headroom: without it the tallest column
+		   touches the top gridline and the top tick label has nowhere
+		   to sit. */
+		var nice = chNice(peak * 1.02, cfg.ticks || 4);
+		var ticks = [];
+		for (var t = 0; t <= nice.max + nice.step / 1000; t += nice.step) ticks.push(Math.round(t * 1e6) / 1e6);
+		var widest = 0;
+		ticks.forEach(function (t) { widest = Math.max(widest, chFmt(t).length); });
+
+		/* RTL MIRRORING, decided once here and obeyed everywhere else in
+				   this function. Two things move together or the chart is not
+				   mirrored, it is broken: the value axis moves to the RIGHT (so
+				   the `l`/`r` padding must put the GUTTER on the right), and
+				   the first category moves to the right edge (`xAt` counts down
+				   instead of up).
+
+				   That means `rtl` must be known BEFORE `pad` is built, because
+				   `pad`'s shape depends on it. The earlier naive version built
+				   `pad` first and then swapped `pad.l`/`pad.r` afterwards - but
+				   with `var` hoisting `rtl` was `undefined` at build time, so the
+				   ternary always took the LTR branch and the swap was the only
+				   thing that actually ran. Result: the value axis landed at
+				   x=18 (left) in RTL, labels painting inside the plot. Fix is
+				   structural - compute `rtl` first, then branch `pad` on it,
+				   and drop the post-swap entirely.
+
+				   `axEdge` is the plot edge the VALUE axis stands on, and
+				   `axOut` the direction the labels sit in - so the tick code
+				   below does not need its own RTL branch, it just measures
+				   from the edge the axis is actually on.
+
+				   Nothing here is a physical CSS declaration - it is a number
+				   read out of the rendered direction - so the Direction baseline
+				   in tests/run.mjs still holds, and the tooltip anchor it
+				   permits stays the only permitted physical chart declaration.
+
+				   `dir` is read from the CHART, not the document: a chart can
+				   sit inside an RTL subtree of an LTR page, and that is the case
+				   a document-level read would silently get wrong. */
+				var rtl = chDir(cfg.rtl, cfg.box);
+
+				/* THE GUTTER MOVES, IT DOES NOT SHRINK. The left inset is
+				   `max(18, widest * 7.2 + 10)` - it is sized to the widest
+				   y-axis LABEL, not to a constant - and the right inset is a
+				   flat 10. In RTL the value axis belongs on the RIGHT, so the
+				   GUTTER value moves to `pad.r` and the flat 10 moves to
+				   `pad.l`.
+
+				   Swapping the two variables naively (the obvious first
+				   attempt) puts the flat 10 on the left and collapses the
+				   gutter: measured, the RTL plot then ran 10 -> 770 in a 794
+				   canvas with the tick labels at x=18 anchored `start`, which
+				   paints the labels INSIDE the plot rather than beside an
+				   axis on the right. It looked mirrored in the category
+				   order and was wrong about the axis. The swap has to move
+				   the SIZED value across. */
+				var gut = Math.max(18, widest * 7.2 + 10), edge = 10;
+				var pad = rtl ? { l: edge, r: gut, t: 10, b: 26 }
+						: { l: gut, r: edge, t: 10, b: 26 };
+			var pw = Math.max(1, w - pad.l - pad.r), ph = Math.max(1, h - pad.t - pad.b);
+		var band = pw / Math.max(1, n);
+		var isBar = cfg.type === 'bar';
+		var base = pad.t + ph;
+		/* axEdge is the x-coordinate of the VALUE (y) axis, and axOut
+		   is how far the tick labels step OFF that edge - both must flip
+		   with direction so ticks land on the correct side. */
+		var axEdge = rtl ? (w - pad.r) : pad.l;
+		var axOut = rtl ? 8 : -8;
+		var xAt = function (i) {
+			var k = rtl ? (n - 1 - i) : i;
+			return isBar ? pad.l + band * (k + 0.5)
+				: pad.l + (n > 1 ? (pw * k) / (n - 1) : pw / 2);
+		};
+		var yAt = function (v) { return base - (ph * v) / nice.max; };
+
+		var s = '';
+		var gi = '';
+		ticks.forEach(function (t) {
+			var y = Math.round(yAt(t) * 100) / 100;
+			gi += '<line class="cm-chart__grid" x1="'+pad.l+'" y1="'+y+'" x2="'+(w - pad.r)+'" y2="'+y+'"/>';
+		});
+		if (cfg.grid === 'vertical') {
+			for (var g = 0; g < n; g++) {
+				var gx = Math.round(xAt(g) * 100) / 100;
+				gi += '<line class="cm-chart__grid cm-chart__grid--vertical" x1="' + gx + '" y1="' + pad.t + '" x2="' + gx + '" y2="' + base + '"/>';
+			}
+		}
+		s += '<g>' + gi + '</g>';
+
+		s += '<g>';
+		ticks.forEach(function (t) {
+			var y = Math.round(yAt(t) * 100) / 100;
+			s += '<line class="cm-chart__tick" x1="' + (axEdge + axOut) + '" y1="' + y + '" x2="' + axEdge + '" y2="' + y + '"/>' +
+				'<text class="cm-chart__tick-label" x="' + (axEdge + axOut) + '" y="' + y +
+				'" text-anchor="' + (rtl ? 'start' : 'end') + '" dominant-baseline="middle">' + chEsc(chFmt(t)) + '</text>';
+		});
+		s += '</g>';
+
+		/* A label per x, or every Nth one when they would collide.
+		   Twelve month names at 320px is twelve overlapping strings,
+		   and an unreadable axis is a wrong axis. */
+		var xkey = cfg.x || 'x';
+		var longest = 1;
+		rows.forEach(function (r) { longest = Math.max(longest, String(r[xkey]).length); });
+		var every = Math.max(1, Math.ceil((longest * 7.2 * n) / pw));
+		s += '<g>';
+		rows.forEach(function (r, i) {
+			var x = Math.round(xAt(i) * 100) / 100;
+			s += '<line class="cm-chart__tick" x1="' + x + '" y1="' + base + '" x2="' + x + '" y2="' + (base + 4) + '"/>';
+			if (i % every && i !== n - 1) return;
+			s += '<text class="cm-chart__tick-label" x="' + x + '" y="' + (base + 16) +
+				'" text-anchor="middle">' + chEsc(r[xkey]) + '</text>';
+		});
+		s += '</g>';
+
+		var body = '';
+		/* The slot layout. A band is `band` wide; the bars in it get a
+		   `bw` column. Stacked, every level occupies that column and
+		   they differ only in y. Grouped, the column is split into one
+		   slot per series, because two bars drawn at the same x are
+		   one bar drawn twice - the second covers the first and the
+		   chart silently plots one series less than it says it has. */
+		var bw = Math.max(2, Math.min(band * 0.62, 26));
+		var slot = stacked ? bw : bw / ser.length;
+		var barX = function (i, si) {
+			return stacked ? xAt(i) - bw / 2
+				: xAt(i) - bw / 2 + slot * si;
+		};
+		/* The stack floor is PER BAND and belongs OUTSIDE the series
+		   loop: nesting it inside walked every band once per series and
+		   emitted each bar twice, and it also let the second band start
+		   where the first ended, so a stacked column read no taller than
+		   a grouped one. One array, one pass over the series, one
+		   floor per band - the outer loop's index is the stack LEVEL. */
+		var floors = new Array(rows.length);
+		ser.forEach(function (sp, si) {
+			var k = chIdent(sp.key);
+			var vals = rows.map(function (r) { return chNum(r[sp.key]); });
+			var d = '';
+			if (isBar) {
+				vals.forEach(function (v, i) {
+					var f = floors[i] || 0;
+					var y0 = yAt(f), y1 = yAt(f + v);
+					var top = Math.min(y0, y1), hgt = Math.max(1, Math.abs(y1 - y0));
+					// Only a stacked column carries a floor forward. In a
+					// grouped one every bar starts on the ground, so
+					// accumulating here lifted the second series of each
+					// band to sit on the first and the grouped chart grew
+					// a phantom staircase.
+					if (stacked) floors[i] = f + v;
+					body += '<rect class="cm-chart__bar' + (stacked ? ' cm-chart__bar--stacked' : '') +
+						'" data-cm-k="' + chEsc(sp.key) + '" data-cm-band="' + i + '" data-cm-level="' + si + '"' +
+						' x="' + Math.round(barX(i, si) * 100) / 100 + '" y="' + Math.round(top * 100) / 100 +
+						'" width="' + Math.round(slot * 100) / 100 + '" height="' + Math.round(hgt * 100) / 100 + '"/>';
+				});
+				return;
+			}
+			var floor = 0;
+			vals.forEach(function (v, i) {
+				if (i === 0) floor = 0;
+				var y = yAt(stacked ? floor + v : v);
+				d += (i ? 'L' : 'M') + Math.round(xAt(i) * 100) / 100 + ' ' + Math.round(y * 100) / 100;
+				
+				if (stacked) floor += v;
+			});
+			if (cfg.type === 'area') {
+				body += '<defs><linearGradient id="' + uid + '-g-' + k + '" x1="0" y1="0" x2="0" y2="1">' +
+					'<stop class="cm-chart__stop" data-cm-k="' + chEsc(sp.key) + '" data-cm-stop="top" offset="0"/>' +
+					'<stop class="cm-chart__stop" data-cm-k="' + chEsc(sp.key) + '" data-cm-stop="base" offset="1"/>' +
+					'</linearGradient></defs>';
+				body += '<path class="cm-chart__area" data-cm-k="' + chEsc(sp.key) + '" d="' + d +
+					'L' + Math.round(xAt(n - 1) * 100) / 100 + ' ' + Math.round(base * 100) / 100 +
+					'L' + Math.round(xAt(0) * 100) / 100 + ' ' + Math.round(base * 100) / 100 + 'Z"/>';
+			}
+			body += '<path class="cm-chart__line" data-cm-k="' + chEsc(sp.key) + '" d="' + d + '"/>';
+			
+		});
+		s += '<g>' + body + '</g>';
+
+		/* The pointer layer: one full-height band per x. It is drawn
+		   LAST and carries fill:transparent, so a hit rect over the
+		   bars cannot hide them. */
+		var hits = '';
+		for (var i2 = 0; i2 < n; i2++) {
+			hits += '<rect class="cm-chart__hit" data-cm-band="' + i2 + '" x="' +
+				Math.round((pad.l + band * i2) * 100) / 100 + '" y="' + pad.t + '" width="' +
+				Math.round(band * 100) / 100 + '" height="' + ph + '"/>';
+		}
+		s += '<g>' + hits + '</g>';
+		s += '<line class="cm-chart__cursor" y1="' + pad.t + '" y2="' + base + '" x1="' + pad.l + '" x2="' + pad.l + '"/>';
+		var marks = '';
+		ser.forEach(function (sp) {
+			marks += '<circle class="cm-chart__marker" data-cm-k="' + chEsc(sp.key) + '" cx="' + pad.l +
+				'" cy="' + base + '" r="3"/>';
+		});
+		s += '<g>' + marks + '</g>';
+		return s;
+	}
+
+	/* ---------------- pie (and donut, same arc) ---------------- */
+
+	function chArc(cx, cy, r0, r1, a0, a1) {
+		var pt = function (r, a) {
+			return [Math.round((cx + r * Math.cos(a)) * 100) / 100, Math.round((cy + r * Math.sin(a)) * 100) / 100];
+		};
+		var sweep = a1 - a0;
+		if (sweep >= Math.PI * 2 - 1e-6) {
+			/* A full circle cannot be one arc: the start and the end
+			   points coincide and the renderer draws nothing. Two
+			   half-turns is the whole circle. */
+			var m = pt(r1, a0), q = pt(r1, a0 + Math.PI);
+			var im = pt(r0, a0 + Math.PI), j = pt(r0, a0);
+			var half = r0 > 0
+				? 'M' + m + 'A' + r1 + ' ' + r1 + ' 0 1 1 ' + q +
+					'A' + r1 + ' ' + r1 + ' 0 1 1 ' + m + 'L' + j + 'A' + r0 + ' ' + r0 + ' 0 1 0 ' + im + 'A' + r0 + ' ' + r0 + ' 0 1 0 ' + j + 'Z'
+				: 'M' + m + 'A' + r1 + ' ' + r1 + ' 0 1 1 ' + q + 'A' + r1 + ' ' + r1 + ' 0 1 1 ' + m + 'Z';
+			return half;
+		}
+		var o0 = pt(r1, a0), o1 = pt(r1, a1);
+		var large = sweep > Math.PI ? 1 : 0;
+		var d = 'M' + o0 + 'A' + r1 + ' ' + r1 + ' 0 ' + large + ' 1 ' + o1;
+		if (r0 > 0) {
+			var i1 = pt(r0, a1), i0 = pt(r0, a0);
+			d += 'L' + i1 + 'A' + r0 + ' ' + r0 + ' 0 ' + large + ' 0 ' + i0 + 'Z';
+		} else {
+			d += 'Z';
+		}
+		return d;
+	}
+
+	function chPie(cfg, w, h, uid) {
+		var rows = cfg.data || [], ser = chSeries(cfg);
+		var sp = ser[0];
+		if (!sp) return '';
+		var cx = w / 2, cy = h / 2;
+		var r = Math.max(4, Math.min(w, h) / 2 - 18);
+		var inner = Math.max(0, Math.min(r - 4, chNum(cfg.innerRadius)));
+		var total = 0;
+		rows.forEach(function (row) { total += chNum(row[sp.key]); });
+		if (!(total > 0)) return '';
+		/* RTL: the sweep runs the other way, so the first (largest) slice
+	   starts where the last one ended and the order reads from the
+	   mirrored start. Same arcs, same shares, mirrored direction. */
+		var pieRtl = chDir(cfg.rtl, cfg.box);
+		var a = pieRtl ? Math.PI / 2 : -Math.PI / 2, s = '';
+		rows.forEach(function (row, i) {
+			var sweep = (chNum(row[sp.key]) / total) * Math.PI * 2;
+			if (pieRtl) sweep = -sweep;
+			var active = cfg.active === i;
+			s += '<path class="cm-chart__slice' + (active ? ' cm-chart__slice--active' : '') +
+				'" data-cm-k="' + chEsc(sp.key) + '" data-cm-slice="' + i + '" d="' +
+				chArc(cx, cy, inner, r, a, a + sweep) + '"/>';
+			a += sweep;
+		});
+		void uid;
+		return s;
+	}
+
+	/* ---------------- radial: one ring band per row ---------------- */
+
+	function chRadial(cfg, w, h) {
+		var rows = cfg.data || [], ser = chSeries(cfg);
+		var sp = ser[0];
+		if (!sp || !rows.length) return '';
+		var cx = w / 2, cy = h / 2;
+		var r = Math.max(4, Math.min(w, h) / 2 - 18);
+		var peak = 0;
+		rows.forEach(function (row) { peak = Math.max(peak, chNum(row[sp.key])); });
+		if (!(peak > 0)) return '';
+		var n = rows.length;
+		var thick = (r * 2) / n;
+		var slot = (Math.PI * 2) / n;
+		var s = '<g>';
+		for (var i = 0; i < n; i++) {
+			var r0 = thick * i, r1 = r0 + thick;
+			var c0 = -Math.PI / 2 - slot / 2 + slot * 0.12;
+			var c1 = -Math.PI / 2 + slot / 2 - slot * 0.12;
+			s += '<path class="cm-chart__ring" d="' + chArc(cx, cy, r0, r1, c0, c1) + '"/>';
+			var len = (thick * 0.86 * chNum(rows[i][sp.key])) / peak;
+			s += '<path class="cm-chart__slice" data-cm-k="' + chEsc(sp.key) + '" data-cm-slice="' + i +
+				'" d="' + chArc(cx, cy, r0 + thick * 0.07, r0 + thick * 0.07 + Math.max(1, len), c0, c1) + '"/>';
+		}
+		return s + '</g>';
+	}
+
+	/* ---------------- radar ---------------- */
+
+	function chRadar(cfg, w, h) {
+		var rows = cfg.data || [], ser = chSeries(cfg);
+		var n = rows.length;
+		if (!n) return '';
+		var peak = 0;
+		rows.forEach(function (row) {
+			ser.forEach(function (sp) { peak = Math.max(peak, chNum(row[sp.key])); });
+		});
+		var nice = chNice(peak * 1.02, 4);
+		var cx = w / 2, cy = h / 2;
+		var r = Math.max(4, Math.min(w, h) / 2 - 30);
+		var at = function (i, frac) {
+			var a = -Math.PI / 2 + (Math.PI * 2 * i) / n;
+			return [cx + r * frac * Math.cos(a), cy + r * frac * Math.sin(a)];
+		};
+		var s = '<g>';
+		for (var ring = 1; ring <= 4; ring++) {
+			var pts = [];
+			for (var i = 0; i < n; i++) pts.push(at(i, ring / 4).map(function (v) { return Math.round(v * 100) / 100; }).join(','));
+			s += '<polygon class="cm-chart__grid" points="' + pts.join(' ') + '"/>';
+		}
+		rows.forEach(function (row, i) {
+			var p = at(i, 1);
+			s += '<line class="cm-chart__spoke" x1="' + cx + '" y1="' + cy + '" x2="' +
+				Math.round(p[0] * 100) / 100 + '" y2="' + Math.round(p[1] * 100) / 100 + '"/>' +
+				'<text class="cm-chart__tick-label" x="' + Math.round(p[0] * 100) / 100 + '" y="' +
+				Math.round((p[1] + (p[1] < cy ? 12 : -6)) * 100) / 100 + '" text-anchor="middle">' +
+				chEsc(row[cfg.x || 'x']) + '</text>';
+		});
+		s += '</g><g>';
+		ser.forEach(function (sp) {
+			var pts = [];
+			rows.forEach(function (row, i) {
+				pts.push(at(i, Math.min(1, chNum(row[sp.key]) / nice.max))
+					.map(function (v) { return Math.round(v * 100) / 100; }).join(','));
+			});
+			s += '<polygon class="cm-chart__radar" data-cm-k="' + chEsc(sp.key) + '" points="' + pts.join(' ') + '"/>';
+		});
+		/* The pointer layer. A radar plot has no x BANDS to divide, so
+		   the hits are one strip along each SPOKE instead: a rect
+		   rotated about the centre, narrow enough not to steal the
+		   neighbouring spoke's angle and long enough to be a target.
+		   Without this the radar chart is the one type on the page a
+		   pointer cannot interrogate at all - and a chart the reader
+		   cannot ask a question of is a picture. */
+		var hits = '';
+		for (var h = 0; h < n; h++) {
+			var hp = at(h, 1);
+			var ang = (Math.atan2(hp[1] - cy, hp[0] - cx) * 180) / Math.PI;
+			var len = r * 1.02;
+			hits += '<rect class="cm-chart__hit" data-cm-band="' + h + '" x="' +
+				Math.round((cx - len / 2) * 100) / 100 + '" y="' +
+				Math.round((cy - 6) * 100) / 100 + '" width="' + Math.round(len * 100) / 100 +
+				'" height="12" transform="rotate(' + Math.round(ang * 100) / 100 +
+				' ' + cx + ' ' + cy + ')"/>';
+		}
+		return s + '</g><g>' + hits + '</g>';
+	}
+
+	/* ---------------- the plot, at a measured width ---------------- */
+
+	function chartPlot(cfg) {
+		var uid = cfg.uid || 'cmc';
+		var w = Math.max(160, Math.round(chNum(cfg.w) || 640));
+		var h = Math.max(140, Math.round(chNum(cfg.h) || 240));
+		var ser = chSeries(cfg);
+		var inner = cfg.type === 'radar' ? chRadar(cfg, w, h)
+			: cfg.type === 'radial' ? chRadial(cfg, w, h)
+			: cfg.type === 'pie' ? chPie(cfg, w, h, uid)
+			: chCart(cfg, w, h, uid);
+		return '<svg class="cm-chart__svg" viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h +
+			'" role="img" aria-labelledby="' + uid + '-title ' + uid + '-desc" aria-describedby="' + uid +
+			'-data" tabindex="0" data-cm-chart-svg>' + chHead(uid, cfg) + inner + '</svg>' + chTipMarkup(cfg, ser);
+	}
+	/* The public entry: the container, its style block, the legend and
+	   the table. A build step and the runtime both call this with the
+	   same config, so the served HTML and the live chart cannot be
+	   written by two different hands. */
+	function chartMarkup(cfg) {
+		cfg = cfg || {};
+		var uid = cfg.uid || 'cmc';
+		var ser = chSeries(cfg);
+		var xkey = cfg.x || 'x';
+		var legend = ser.map(function (s) {
+			return '<li class="cm-chart__legend-item"><span class="cm-chart__legend-dot" data-cm-k="' +
+				chEsc(s.key) + '"></span><span class="cm-chart__legend-label">' + chEsc(s.label) + '</span></li>';
+		}).join('');
+		var head = '<tr><th scope="col" data-cm-x="' + chEsc(xkey) + '">' + chEsc(xkey) + '</th>' +
+			ser.map(function (s) {
+				return '<th scope="col" data-cm-k="' + chEsc(s.key) + '" data-cm-label="' + chEsc(s.label) +
+					'" data-cm-tone="' + s.tone + '">' + chEsc(s.label) + '</th>';
+			}).join('') + '</tr>';
+		var body = (cfg.data || []).map(function (row) {
+			return '<tr><th scope="row">' + chEsc(row[xkey]) + '</th>' +
+				ser.map(function (s) { return '<td>' + chEsc(chExact(row[s.key])) + '</td>'; }).join('') + '</tr>';
+		}).join('');
+		/* The modifier is only emitted for the types that HAVE one: it
+		   exists to move a circular or bar plot onto the nested
+		   surface step, and inventing `.cm-chart--line` would be a
+		   class the library defines and styles to nothing. */
+		var NESTED = { bar: 1, pie: 1, radial: 1, radar: 1 };
+		return '<div class="cm-chart' + (NESTED[cfg.type] ? ' cm-chart--' + cfg.type : '') + '" id="' + uid +
+			'" data-cm-chart data-cm-chart-type="' + chEsc(cfg.type || 'line') + '"' +
+			(cfg.stacked ? ' data-cm-chart-stacked="true"' : '') +
+			(cfg.grid === 'vertical' ? ' data-cm-chart-grid="vertical"' : '') +
+			(cfg.innerRadius ? ' data-cm-chart-inner="' + Math.round(chNum(cfg.innerRadius)) + '"' : '') +
+			(cfg.active != null ? ' data-cm-chart-active="' + cfg.active + '"' : '') +
+			/* The tooltip/legend prop surface is serialized here, at the
+			   same place every other option is, because this function IS
+			   the runtime's renderer: `chConfig()` reads these back off
+			   the element. Emitting them from the config object only
+			   would paint the server-rendered chart correctly and then
+			   lose the setting the first time anything re-rendered it -
+			   the tooltip showing a dot that the prop says to hide is
+			   exactly the kind of half-applied option that survives a
+			   test and fails in a browser.
+
+			   Each is emitted only when asked for, so an unset option
+			   adds no attribute and the markup of every existing chart
+			   is unchanged. */
+			(cfg.indicator ? ' data-cm-chart-indicator="' + chEsc(cfg.indicator) + '"' : '') +
+			(cfg.hideLabel ? ' data-cm-chart-hide-label="true"' : '') +
+			(cfg.hideIndicator ? ' data-cm-chart-hide-indicator="true"' : '') +
+			(cfg.labelKey ? ' data-cm-chart-label-key="' + chEsc(cfg.labelKey) + '"' : '') +
+			(cfg.rtl ? ' dir="' + chEsc(cfg.rtl) + '"' : '') +
+			' data-cm-chart-h="' + Math.round(chNum(cfg.h) || 240) + '"' +
+			' data-cm-chart-title="' + chEsc(cfg.title || 'chart') + '"' +
+			' data-cm-chart-desc="' + chEsc(cfg.description || cfg.title || 'chart') + '"' +
+			' data-cm-chart-state="idle">' +
+			'<style class="cm-chart__style">' + chStyle(uid, ser) + '</style>' +
+			'<div class="cm-chart__plot">' + chartPlot(cfg) + '</div>' +
+			(legend ? '<ul class="cm-chart__legend" role="list">' + legend + '</ul>' : '') +
+			'<div class="cm-sr-only" id="' + uid + '-data"><table class="cm-chart__table"><caption>' +
+			chEsc(cfg.title || 'chart') + '</caption><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>' +
+			'</div>';
+	}
+
+	/* ---------------- the runtime half ---------------- */
+
+	/* The table is the data, so the runtime reads the table. That is
+	   why the geometry below cannot disagree with the numbers a screen
+	   reader reads: there is only one set of them. */
+	function chData(box) {
+		var table = box.querySelector('.cm-chart__table');
+		if (!table) return null;
+		var ths = table.querySelectorAll('thead th');
+		if (!ths.length) return null;
+		var xkey = ths[0].getAttribute('data-cm-x') || 'x';
+		var ser = [];
+		for (var i = 1; i < ths.length; i++) {
+			var th = ths[i];
+			ser.push({
+				key: th.getAttribute('data-cm-k') || chText(th),
+				label: th.getAttribute('data-cm-label') || chText(th),
+				tone: Math.round(chNum(th.getAttribute('data-cm-tone')) || i)
+			});
+		}
+		var rows = [];
+		table.querySelectorAll('tbody tr').forEach(function (tr) {
+			var cells = tr.children, row = {};
+			row[xkey] = chText(cells[0]);
+			for (var j = 1; j < cells.length; j++) row[ser[j - 1].key] = chNum(chText(cells[j]));
+			rows.push(row);
+		});
+		if (!rows.length) return null;
+		return { x: xkey, series: ser, data: rows };
+	}
+	function chConfig(box, w) {
+		var d = chData(box);
+		if (!d) return null;
+		return {
+			uid: box.id,
+			type: box.getAttribute('data-cm-chart-type') || 'line',
+			x: d.x,
+			series: d.series,
+			data: d.data,
+			stacked: box.getAttribute('data-cm-chart-stacked') === 'true',
+			grid: box.getAttribute('data-cm-chart-grid') || 'horizontal',
+			innerRadius: chNum(box.getAttribute('data-cm-chart-inner')),
+			active: box.hasAttribute('data-cm-chart-active')
+				? Math.round(chNum(box.getAttribute('data-cm-chart-active'))) : null,
+			ticks: 4,
+			w: w,
+			h: Math.round(chNum(box.getAttribute('data-cm-chart-h')) || 240),
+			rtl: box.getAttribute('dir'),
+			box: box,
+			/* the tooltip/legend prop surface, all defaulted OFF */
+			indicator: box.getAttribute('data-cm-chart-indicator'),
+			hideLabel: box.getAttribute('data-cm-chart-hide-label') === 'true',
+			hideIndicator: box.getAttribute('data-cm-chart-hide-indicator') === 'true',
+			labelKey: box.getAttribute('data-cm-chart-label-key'),
+			title: box.getAttribute('data-cm-chart-title') || 'chart',
+			description: box.getAttribute('data-cm-chart-desc') || 'chart'
+		};
+	}
+	function chRender(box, w) {
+		var plot = box.querySelector('.cm-chart__plot');
+		var cfg = chConfig(box, w);
+		if (!plot || !cfg) return false;
+		var hadFocus = plot.contains(document.activeElement);
+		plot.innerHTML = chartPlot(cfg);
+		if (hadFocus) {
+			var svg = plot.querySelector('.cm-chart__svg');
+			if (svg) svg.focus();
+		}
+		return true;
+	}
+
+	function chShow(box, i) {
+		var d = chData(box);
+		var plot = box.querySelector('.cm-chart__plot');
+		if (!d || !plot) return;
+		var svg = plot.querySelector('.cm-chart__svg');
+		var tip = plot.querySelector('.cm-chart__tooltip');
+		if (!svg || !tip) return;
+		if (i == null || i < 0 || i >= d.data.length) {
+			box.setAttribute('data-cm-chart-state', 'idle');
+			// Idle means idle. Setting the attribute alone left the
+			// last category's title and numbers in the tooltip's DOM,
+			// so Escape (and every pointer-out) left a tooltip reading
+			// "nov 3,690" floating over a chart nothing points at.
+			// The layer is visibility-driven, so clearing the text is
+			// belt and braces - but it is what a screen reader would
+			// still announce, and that one is not hidden by CSS.
+			var t0 = tip.querySelector('.cm-chart__tip-title');
+			if (t0) t0.textContent = '';
+			tip.querySelectorAll('.cm-chart__tip-val').forEach(function (v) { v.textContent = ''; });
+			return;
+		}
+		var row = d.data[i];
+		var title = tip.querySelector('.cm-chart__tip-title');
+		if (title) title.textContent = String(row[d.x]);
+		var marks = svg.querySelectorAll('.cm-chart__marker');
+		var rows = tip.querySelectorAll('.cm-chart__tip-row');
+		d.series.forEach(function (sp, k) {
+			var v = chNum(row[sp.key]);
+			var val = rows[k] && rows[k].querySelector('.cm-chart__tip-val');
+			if (val) val.textContent = chExact(v);
+			if (!marks[k]) return;
+			var band = svg.querySelector('.cm-chart__hit[data-cm-band="' + i + '"]');
+			var src = svg.querySelector('.cm-chart__bar[data-cm-k="' + sp.key + '"][data-cm-band="' + i + '"]');
+			if (src) {
+				marks[k].setAttribute('cx', String(chNum(src.getAttribute('x')) + chNum(src.getAttribute('width')) / 2));
+				marks[k].setAttribute('cy', String(chNum(src.getAttribute('y'))));
+			} else if (band) {
+				var b = band.getBBox ? band.getBBox() : { x: chNum(band.getAttribute('x')), width: chNum(band.getAttribute('width')) };
+				marks[k].setAttribute('cx', String(b.x + b.width / 2));
+				marks[k].setAttribute('cy', chNum(svg.getAttribute('height')) - 26);
+			}
+		});
+		var cur = svg.querySelector('.cm-chart__cursor');
+		var band2 = svg.querySelector('.cm-chart__hit[data-cm-band="' + i + '"]');
+		if (cur && band2) {
+			var r = band2.getBBox ? band2.getBBox() : { x: chNum(band2.getAttribute('x')), width: chNum(band2.getAttribute('width')) };
+			var cx = Math.round((r.x + r.width / 2) * 100) / 100;
+			cur.setAttribute('x1', String(cx));
+			cur.setAttribute('x2', String(cx));
+		}
+		if (band2) {
+			var rb = band2.getBBox ? band2.getBBox() : { x: chNum(band2.getAttribute('x')), width: chNum(band2.getAttribute('width')) };
+			var tw = tip.getBoundingClientRect().width;
+			var pw = plot.getBoundingClientRect().width;
+			/* The tip is centred on the band and then clamped, because
+			   a band at the right edge with a 160px tip centred on it
+			   is a tip half off the chart. */
+			var x = rb.x + rb.width / 2;
+			if (tw) x = Math.min(Math.max(x, tw / 2), Math.max(tw / 2, pw - tw / 2));
+			tip.style.setProperty('--cm-chart-tip-x', Math.round(x) + 'px');
+		}
+		box.setAttribute('data-cm-chart-state', 'active');
+	}
+
+	function cmInitCharts(root) {
+		Array.prototype.forEach.call(
+			(root || document).querySelectorAll('[data-cm-chart]'),
+			function (box) {
+				if (box.getAttribute('data-cm-chart-bound')) return;
+				box.setAttribute('data-cm-chart-bound', '1');
+				chBind(box);
+			}
+		);
+	}
+
+	function chBind(box) {
+		var plot = box.querySelector('.cm-chart__plot');
+		if (!plot) return;
+		var width = 0;
+		var paint = function () {
+			var w = Math.round(plot.getBoundingClientRect().width);
+			if (!(w > 0) || w === width) return;
+			width = w;
+			chRender(box, w);
+		};
+		paint();
+		if (typeof ResizeObserver === 'function') {
+			/* Width only. Re-rendering changes the plot's HEIGHT, so an
+			   observer that re-rendered on any resize would write the
+			   markup it is being measured against and loop forever. */
+			new ResizeObserver(function () { paint(); }).observe(plot);
+		} else if (typeof window !== 'undefined') {
+			window.addEventListener('resize', paint);
+		}
+
+		var active = -1;
+		var move = function (i) {
+			active = i;
+			chShow(box, i);
+		};
+		plot.addEventListener('pointermove', function (e) {
+			var hit = e.target.closest ? e.target.closest('[data-cm-band],[data-cm-slice]') : null;
+			if (!hit) { move(-1); return; }
+			if (hit.hasAttribute('data-cm-band')) {
+				move(Math.round(chNum(hit.getAttribute('data-cm-band'))));
+			} else {
+				var i = Math.round(chNum(hit.getAttribute('data-cm-slice')));
+				active = i;
+				var svg = plot.querySelector('.cm-chart__svg');
+				var slice = svg && svg.querySelector('.cm-chart__slice[data-cm-slice="' + i + '"]');
+				if (slice) slice.classList.add('cm-chart__slice--active');
+				chShow(box, i);
+				if (slice) {
+					var box2 = slice.getBoundingClientRect();
+					var tip = plot.querySelector('.cm-chart__tooltip');
+					if (tip) {
+						var tw = tip.getBoundingClientRect().width;
+						var pw = plot.getBoundingClientRect().width;
+						var x = Math.min(Math.max(box2.left - plot.getBoundingClientRect().left + box2.width / 2, tw / 2),
+							Math.max(tw / 2, pw - tw / 2));
+						tip.style.setProperty('--cm-chart-tip-x', Math.round(x) + 'px');
+					}
+				}
+			}
+		});
+		plot.addEventListener('pointerleave', function () {
+			if (plot.contains(document.activeElement)) return;
+			active = -1;
+			chShow(box, -1);
+			Array.prototype.forEach.call(plot.querySelectorAll('.cm-chart__slice--active'), function (s) {
+				if (!s.hasAttribute('data-cm-slice')) return;
+			});
+		});
+		var svg0 = plot.querySelector('.cm-chart__svg');
+		if (!svg0) return;
+		svg0.addEventListener('keydown', function (e) {
+			var d = chData(box);
+			if (!d) return;
+			var last = d.data.length - 1;
+			var step = 0;
+			if (e.key === 'ArrowRight' || e.key === 'ArrowDown') step = 1;
+			else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') step = -1;
+			else if (e.key === 'Home') step = -last;
+			else if (e.key === 'End') step = last;
+			else if (e.key === 'Escape') { move(-1); e.preventDefault(); return; }
+			else return;
+			e.preventDefault();
+			var at = active < 0 ? (step > 0 ? -1 : last) : active;
+			move(Math.min(last, Math.max(0, at + step)));
+		});
+		svg0.addEventListener('focus', function () {
+			var d = chData(box);
+			if (d && active < 0) move(0);
+		});
+		svg0.addEventListener('blur', function () {
+			if (active >= 0) { active = -1; chShow(box, -1); }
+		});
+	}
+
 	var api = {
 		init: init,
 		applyTheme: applyTheme,
@@ -4543,7 +5906,8 @@
 		},
 		copyText: copyText,
 		toast: toast,
-		dismissToast: dismiss
+		dismissToast: dismiss,
+		chartMarkup: chartMarkup
 	};
 
 	// Global handle for any project, plus module export for bundlers.
@@ -4620,6 +5984,44 @@
 		// keydown for CMD-B and Escape, and a pointer session for the rail
 		// (drag resizes, an unmoved press toggles) - all at the root, so a
 		// panel a consumer re-renders keeps every control.
+		/* ---- lightbox ------------------------------------------------
+		   The image viewer. The frame is a native <dialog> the consumer
+		   renders, so the top layer, Escape, the backdrop and focus
+		   trapping are the platform's. All this binds is the TRIGGER:
+		   any element carrying data-cm-lightbox=<url> opens the dialog
+		   that element names via data-cm-lightbox-target (or the one
+		   <dialog class="cm-lightbox"> on the page) and paints the URL
+		   into its <img>. One delegate, so a timeline of a thousand
+		   thumbnails costs one listener. */
+		function onLightboxClick(e) {
+			var t = e.target;
+			if (!t || typeof t.closest !== 'function') return;
+			var opener = t.closest('[data-cm-lightbox]');
+			if (opener) {
+				var url = opener.getAttribute('data-cm-lightbox');
+				if (!url) return;
+				var id = opener.getAttribute('data-cm-lightbox-target');
+				var dlg = id
+					? document.getElementById(id)
+					: document.querySelector('dialog.cm-lightbox:not(.cm-lightbox--spec)');
+				if (!dlg) return;
+				var img = dlg.querySelector('.cm-lightbox__img');
+				if (img) {
+					img.setAttribute('src', url);
+					/* The opener's own alt is the best description the page
+					   has; falling back to empty keeps the img decorative
+					   rather than announcing a URL. */
+					var alt = opener.getAttribute('data-cm-lightbox-alt') || '';
+					img.setAttribute('alt', alt);
+				}
+				if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
+				else if (typeof dlg.show === 'function') dlg.show();
+				return;
+			}
+			/* Any [data-cm-close] inside the lightbox closes it, which the
+			   dialog binder already owns; nothing to add here. */
+		}
+		document.addEventListener('click', onLightboxClick);
 		document.addEventListener('click', onSidebarClick);
 		document.addEventListener('keydown', onSidebarKeydown);
 		document.addEventListener('pointerdown', onSidebarPointerDown);
