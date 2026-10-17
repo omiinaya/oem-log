@@ -519,7 +519,14 @@
 			} else {
 				src = btn.previousElementSibling;
 			}
-			var text = direct ? val : (src ? (src.innerText || src.textContent) : '');
+			/* Line numbers are a READING aid and must not be COPIED: a
+			   gutter is `user-select:none`, but innerText reflects what is
+			   rendered, not what is selectable, so a numbered CodeBlock
+			   would have put "1	240	const x" in the clipboard — code
+			   pasted into an editor with stray gutters pasted into it.
+			   Clone, strip, extract: the one consumer that needs the raw
+			   text pays a clone, every other source takes the fast path. */
+			var text = direct ? val : extractCopyText(src);
 			if (!text) return;
 			var original = btn.getAttribute('data-cm-label') || btn.textContent;
 			copyText(String(text).trim())
@@ -550,6 +557,30 @@
 		var slot = btn.querySelector('[data-cm-copy-label]');
 		if (slot) slot.textContent = text;
 		else btn.textContent = text;
+	}
+
+	/* ---------- copy extraction ----------
+	   A CodeBlock's line numbers live INSIDE the <pre> as spans, so the
+	   default extraction would put them in the clipboard: `innerText`
+	   reflects rendered text, not selectable text, and `user-select:none`
+	   does not exclude it. The gutter also has no whitespace of its own, so
+	   naive stripping would yield "240const x". The clone takes them out by
+	   element and the explicit newline text nodes between lines carry the
+	   structure; a source with no gutter takes the untouched fast path. */
+	function extractCopyText(src) {
+		if (!src) return '';
+		if (!src.querySelector || !src.querySelector('.cm-code__ln')) {
+			return src.innerText || src.textContent || '';
+		}
+		var clone = src.cloneNode(true);
+		var gutters = clone.querySelectorAll('.cm-code__ln');
+		for (var i = 0; i < gutters.length; i++) {
+			var g = gutters[i];
+			if (g.parentNode) g.parentNode.removeChild(g);
+		}
+		/* Detached clone: innerText would be textContent anyway, and the
+		   line structure is in the text nodes, not in the layout. */
+		return clone.textContent || '';
 	}
 
 	/* ---------- generated table labels ----------
@@ -2637,33 +2668,95 @@
 	   an 18rem panel over the edge: measured on the showcase at 320px,
 	   document.scrollWidth 328 with the panel's right edge at 328. Menus
 	   already clamp in anchorPopover; this is that same rule for a panel
-	   that never opens through JS. The clamp runs at init and on resize
-	   (scroll is irrelevant - the panel moves WITH its wrapper), and a
-	   consumer with no JS keeps the CSS-only behaviour it always had. */
+	   that never opens through JS. Init and resize re-clamp every panel;
+	   the delegated reveal path below re-clamps the ONE card about to
+	   show (rows arrive late and sheets move their rows without a
+	   resize). A consumer with no JS keeps the CSS-only SHOW, but a JS
+	   consumer that renders rows after init should let the runtime
+	   bind (init + the listeners below) or clamp late rows itself. */
+	function cmClampPanel(panel) {
+		var wrap = panel.parentElement;
+		if (!wrap) return;
+		panel.style.left = '';        // back to the CSS position
+		panel.style.maxWidth = '';    // ...and to the CSS width
+		var gutter = 8;
+		var avail = window.innerWidth - gutter * 2;
+		if (avail > 0 && panel.offsetWidth > avail) panel.style.maxWidth = avail + 'px';
+		var pr = panel.getBoundingClientRect();
+		var wr = wrap.getBoundingClientRect();
+		var left = pr.left;
+		if (pr.right > window.innerWidth - gutter) left -= pr.right - (window.innerWidth - gutter);
+		if (left < gutter) left = gutter;
+		panel.style.left = (left - wr.left) + 'px';
+	}
 	function cmClampHovercards(root) {
 		if (typeof window === 'undefined') return;
 		var run = function () {
-			Array.prototype.forEach.call(root.querySelectorAll('.cm-hovercard__panel'), function (panel) {
-				var wrap = panel.parentElement;
-				if (!wrap) return;
-				panel.style.left = '';        // back to the CSS position
-				panel.style.maxWidth = '';    // ...and to the CSS width
-				var gutter = 8;
-				var avail = window.innerWidth - gutter * 2;
-				if (avail > 0 && panel.offsetWidth > avail) panel.style.maxWidth = avail + 'px';
-				var pr = panel.getBoundingClientRect();
-				var wr = wrap.getBoundingClientRect();
-				var left = pr.left;
-				if (pr.right > window.innerWidth - gutter) left -= pr.right - (window.innerWidth - gutter);
-				if (left < gutter) left = gutter;
-				panel.style.left = (left - wr.left) + 'px';
-			});
+			Array.prototype.forEach.call(root.querySelectorAll('.cm-hovercard__panel'), cmClampPanel);
 		};
 		run();
 		if (!window.__cmHoverResize) {
 			window.__cmHoverResize = true;
 			window.addEventListener('resize', run);
 		}
+		/* The clamp above is an init/resize fact, but rows are not: a
+		   roster fills in from /sync AFTER init (measured - every row
+		   the matrix client renders is a late row), and a sheet's rows
+		   change position when the sheet opens, with no resize event in
+		   sight. Two delegated listeners fix both cases, once per
+		   document no matter how many roots re-init. */
+		if (window.__cmHoverBound) return;
+		window.__cmHoverBound = true;
+		var reveal = function (e) {
+			var wrap = e.target && e.target.closest ? e.target.closest('.cm-hovercard') : null;
+			var panel = wrap && wrap.querySelector ? wrap.querySelector('.cm-hovercard__panel') : null;
+			if (panel) cmClampPanel(panel);
+		};
+		/* The reveal clamp rides the SAME events that reveal the card
+		   (the CSS gate is :hover / :focus-within). Handlers run before
+		   paint, so the corrected offset lands in the frame the panel
+		   becomes visible in - no flash of an edge-hanging card. */
+		document.addEventListener('pointerover', reveal, { passive: true });
+		document.addEventListener('focusin', reveal);
+		/* Panels that APPEAR after init: until the pointer or focus
+		   touches them they sit at CSS `left: 0` and hang past the
+		   viewport's edge - the phantom sideways scroll the CSS comment
+		   warns about. The observer callback is a microtask, i.e.
+		   before the frame paints, so no scrolled-out frame shows. */
+		var scheduled = false;
+		var schedule = function () {
+			if (scheduled) return;
+			scheduled = true;
+			window.requestAnimationFrame(function () { scheduled = false; run(); });
+		};
+		if (document.body && window.MutationObserver) {
+			new MutationObserver(function (muts) {
+				for (var i = 0; i < muts.length; i++) {
+					var added = muts[i].addedNodes;
+					for (var j = 0; j < added.length; j++) {
+						var n = added[j];
+						if (n.nodeType !== 1) continue;
+						if ((n.matches && n.matches('.cm-hovercard__panel')) ||
+							(n.querySelector && n.querySelector('.cm-hovercard__panel'))) {
+							schedule();
+							return;
+						}
+					}
+				}
+			}).observe(document.body, { childList: true, subtree: true });
+		}
+		/* Escape dismisses a FOCUSED card. Hover needs nothing - the
+		   pointer leaving is the dismissal - but a keyboard or tap
+		   reader has no "pointer leaving": focus stays on the trigger
+		   and the card stays up forever. Blur hands focus back and the
+		   CSS gate closes the card. Scoped to the active element being
+		   INSIDE a wrapper, so Escape keeps every other job it has (the
+		   palette, dialogs, the find bar) untouched. */
+		document.addEventListener('keydown', function (e) {
+			if (e.key !== 'Escape' && e.key !== 'Esc') return;
+			var act = document.activeElement;
+			if (act && act.blur && act.closest && act.closest('.cm-hovercard')) act.blur();
+		});
 	}
 
 	/* ---------- calendar ----------
@@ -3439,10 +3532,19 @@
 			// Selecting a row runs it and dismisses the palette; that is
 			// the whole point of the component, and the dialog's own
 			// close() is what restores focus to the trigger.
-			items().forEach(function (it) {
-				it.addEventListener('click', function () {
-					if (dlg.open && typeof dlg.close === 'function') dlg.close();
-				});
+			//
+			// DELEGATED to the dialog, not bound per row. An SPA re-renders
+			// its list, so a listener attached to a row that does not exist
+			// yet -- or that the framework replaces tomorrow -- never fires:
+			// the row still RUNS (the app's own handler lives in React) but
+			// the palette stays open, parked on top of the view it just
+			// navigated to. MEASURED in the client: every room rendered
+			// after init() could not close the palette.
+			dlg.addEventListener('click', function (e) {
+				var t = e.target;
+				if (!t || !t.closest) return;
+				if (!t.closest('.cm-command__item')) return;
+				if (dlg.open && typeof dlg.close === 'function') dlg.close();
 			});
 
 			// Reopening starts clean: a palette that remembers last
@@ -3453,6 +3555,28 @@
 			});
 
 			filter();
+
+			// The list is not necessarily FINISHED when this runs. An SPA
+			// renders its rows on a later tick, so a palette can be bound
+			// against an empty list and then opened over the real one --
+			// where `filter()` at bind time left the empty state SHOWN, and
+			// a row the filter never saw stays visible under a query that
+			// should have hidden it. Both are worse than no palette: the
+			// reader is told there is nothing while looking at everything.
+			//
+			// childList on the subtree catches rows arriving or leaving;
+			// `open` catches the palette being shown over whatever changed
+			// while it was closed. `hidden` writes are NOT in the attribute
+			// filter, so filter()'s own output cannot re-trigger it -- the
+			// observer converges after one pass instead of spinning.
+			if (typeof MutationObserver === 'function') {
+				new MutationObserver(function () { filter(); }).observe(dlg, {
+					attributes: true,
+					attributeFilter: ['open'],
+					childList: true,
+					subtree: true
+				});
+			}
 		});
 	}
 
@@ -4086,14 +4210,32 @@
 				// frame for a bounded window instead; any scroll we did not ask
 				// for is the reader, and the loop stands down for them.
 				var edgePin = { frames: 0, asked: 0, moved: false, on: false };
+				/* Only SCROLLING AWAY from the edge is the reader saying "stop
+				   following". Anything else that moves the position while the pin
+				   is running is the pin itself or the browser re-laying-out
+				   around it: a clamp after a `content-visibility` row resolves
+				   its real height moves the reader DOWN, and an exact-delta
+				   comparison read that as the reader and stood the pin down on
+				   its own write -- leaving a reader stranded mid-log with
+				   `following` false and the resize observer stood down too. */
 				vp.addEventListener('scroll', function () {
-					if (edgePin.on && Math.abs(vp.scrollTop - edgePin.asked) > 2) {
+					if (edgePin.on && vp.scrollTop < edgePin.asked - 2) {
 						edgePin.moved = true;
 					}
 				}, { passive: true });
 				function pinToEdge() {
 					edgePin.moved = false;
+					edgePin.height = -1;
 					edgePin.frames = 120;
+					/* The scroll this jump is ABOUT to cause is not the reader
+					   moving, and the event for it can land BEFORE the first
+					   frame runs -- `asked` still held whatever the previous
+					   position was, so the listener read the pin's own jump as
+					   a reader scroll and stood the pin down on frame one. A
+					   reader arriving mid-animation then stayed stranded at the
+					   pre-growth target. Seed the baseline here, where the jump
+					   has already set the position. */
+					edgePin.asked = vp.scrollTop;
 					if (edgePin.on) return;
 					edgePin.on = true;
 					function step() {
@@ -4104,6 +4246,28 @@
 						}
 						vp.scrollTop = vp.scrollHeight;
 						edgePin.asked = vp.scrollTop;
+						/* Stop the moment the reader is actually AT the edge,
+						   rather than holding the pin for its whole window.
+						   MEASURED: the controls' state is published by paint(),
+						   and a pin that only painted when its window expired left
+						   the pill and the end control claiming there was more to
+						   scroll for seconds after the reader had arrived. Painting
+						   here also sets `data-following`, which is what lets the
+						   resize observer re-pin the NEXT arrival. */
+						/* Stop only on a STABLE end. `content-visibility` rows
+						   resolve their real height a frame after they enter the
+						   viewport, so one frame can read "at the end" while the
+						   log is still about to grow -- and a pin that stopped
+						   there published following=false, which stood down the
+						   resize observer too, stranding the reader with nothing
+						   left to re-pin them. Require the end AND an unchanged
+						   height across two frames. */
+						if (atEnd() && vp.scrollHeight === edgePin.height) {
+							edgePin.on = false;
+							paint();
+							return;
+						}
+						edgePin.height = vp.scrollHeight;
 						edgePin.frames--;
 						requestAnimationFrame(step);
 					}
@@ -4477,6 +4641,7 @@
 		cmInitCommand(root);
 		cmInitNavmenu(root);
 		cmInitCharts(root);
+		initTrace(root);
 		if (!root || root === document) initExternalLinks();
 	}
 
@@ -4735,6 +4900,39 @@
 		}
 		sidebarSyncTriggers(scope);
 	}
+	/* ---------- trace: a step's detail ---------------------------------
+	   A trace step that expands in place. The markup ships the honest
+	   initial state (aria-expanded + hidden already agree), so this only
+	   has to move them together - the same one-mechanism rule the sidebar
+	   disclosures follow, and for the same reason: CSS owning visibility
+	   as well would be a second source of truth for "is it open".
+
+	   DELEGATED from the document, like the copy listener above and for
+	   the identical reason: in a component framework the trigger node is
+	   replaced on re-render, and a per-node listener dies with it. The
+	   button then looks live and does nothing. */
+	var traceDelegated = false;
+	function initTrace(root) {
+		if (traceDelegated) return;
+		traceDelegated = true;
+		(root || document).addEventListener('click', function (e) {
+			var t = e.target;
+			var btn = t && t.closest ? t.closest('.cm-trace__trigger') : null;
+			if (!btn) return;
+			var id = btn.getAttribute('aria-controls');
+			if (!id) return;
+			var panel = document.getElementById(id);
+			/* A trigger pointing at nothing is a dead control; leave the
+			   state alone rather than flipping to an "open" that shows
+			   nothing and cannot be closed by a second press. */
+			if (!panel) return;
+			var open = btn.getAttribute('aria-expanded') === 'true';
+			btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+			if (open) panel.setAttribute('hidden', '');
+			else panel.removeAttribute('hidden');
+		});
+	}
+
 	/* Groups and submenus are disclosures: aria-expanded and hidden move
 	   together, and CSS owns nothing about visibility - one mechanism,
 	   and the markup's own initial state is honest with no JS. */
