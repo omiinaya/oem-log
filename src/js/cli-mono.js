@@ -156,7 +156,7 @@
 		);
 	}
 
-	/* ---------- header scroll state ---------- */
+	/* ---------- reading / scroll progress (placeholder sentinel) */
 	function initHeader(header) {
 		if (!header) return;
 		var ticking = false;
@@ -407,6 +407,196 @@
 			el.textContent = y;
 		});
 	}
+
+	/* ---------- revert banner (countdown-undo) ----------
+	   A RevertGuard-armed write is pending for N seconds: the reader can
+	   *Undo* (cancel) or *Apply now* (fire early), and if they do nothing
+	   the write commits when the countdown expires.
+
+	   Three behaviours this owns, all measured by the suite:
+	   1. THE COUNTDOWN PAUSES WHILE FOCUS IS INSIDE THE BANNER. A reader
+	      who tabs into the banner and starts reading must not be rushed
+	      into a commit; the clock stops on focusin and resumes on
+	      focusout.
+	   2. EXPIRY FIRES THE COMMITTED ACTION AND RESOLVES THE BANNER. It
+	      does not silently vanish - the banner becomes a resolved notice
+	      so the reader can see what happened.
+	   3. THE NUMBER IS REAL TEXT the app can read; the countdown element
+	      carries aria-live="polite" so a screen reader is told politely,
+	      not interrupted.
+
+	   The element contract:
+	     [data-cm-revert]                     the banner
+	     [data-cm-revert-seconds]             total seconds (default 10)
+	     [data-cm-revert-countdown]           the number slot
+	     [data-cm-revert-undo]                cancel
+	     [data-cm-revert-apply]               fire now
+	     [data-cm-revert-status]              resolved-notice slot
+
+	   Events: `cm-revert:expire`, `cm-revert:undo`, `cm-revert:apply`,
+	   each an ordinary CustomEvent (when the host supports it) carrying
+	   `{ seconds }`, so the app can wire its own write without the
+	   component knowing what the write IS. */
+	function initRevert(root) {
+		var scope = root || document;
+		scope.querySelectorAll('[data-cm-revert]').forEach(function (banner) {
+			if (banner.__cmRevertArmed) return;
+			banner.__cmRevertArmed = true;
+
+			var total = parseInt(banner.getAttribute('data-cm-revert-seconds'), 10);
+			if (isNaN(total) || total <= 0) total = 10;
+			var left = total;
+			var slot = banner.querySelector('[data-cm-revert-countdown]');
+			var status = banner.querySelector('[data-cm-revert-status]');
+			var timer = null;
+			var done = false;
+
+			function paint() {
+				if (!slot) return;
+				slot.textContent = left + 's';
+			}
+
+			function stop() {
+				if (timer !== null) {
+					clearInterval(timer);
+					timer = null;
+				}
+			}
+
+			function resolve(kind) {
+				if (done) return;
+				done = true;
+				stop();
+				// The banner STAYS, as a resolved notice. A banner that
+				// disappears leaves the reader unable to tell whether the
+				// write happened - the exact ambiguity the undo exists for.
+				banner.setAttribute('data-cm-revert-resolved', kind);
+				if (status) {
+					status.textContent = kind === 'undo'
+						? 'Reverted. Nothing was written.'
+						: 'Applied. The change is live.';
+					status.removeAttribute('hidden');
+				}
+				if (slot) slot.textContent = '';
+				var ev;
+				try {
+					ev = new CustomEvent('cm-revert:' + kind, { detail: { seconds: total } });
+				} catch (e) {
+					ev = null;
+				}
+				if (ev) banner.dispatchEvent(ev);
+			}
+
+			function tick() {
+				left -= 1;
+				if (left <= 0) {
+					left = 0;
+					paint();
+					resolve('expire');
+					return;
+				}
+				paint();
+			}
+
+			function start() {
+				if (done || timer !== null) return;
+				timer = setInterval(tick, 1000);
+			}
+
+			var undo = banner.querySelector('[data-cm-revert-undo]');
+			var apply = banner.querySelector('[data-cm-revert-apply]');
+			if (undo) undo.addEventListener('click', function () { resolve('undo'); });
+			if (apply) apply.addEventListener('click', function () { resolve('apply'); });
+
+			// Rule 1: focus inside pauses the clock, leaving resumes it.
+			banner.addEventListener('focusin', stop);
+			banner.addEventListener('focusout', function () { start(); });
+
+			paint();
+			start();
+			});
+			}
+
+			/* ---------- cm-term follow mode ----------
+			The live-log tail. Follow is a STATE, not a side effect:
+			- scrolling up disengages it (the user wants to read history,
+			and yanking them back to the tail on every append is the
+			exact "fighting the user" the gap annex bans);
+			- the jump-to-tail button re-engages it;
+			- the toggle button is the same state machine in the other
+			direction, so all three controls stay coherent.
+			DOM is bounded by VIRTUALISED WINDOWING: the body keeps at most
+			MAX_LINES rows and drops from the top when appends overflow —
+			a 100k-line buffer therefore holds without layout collapse. */
+			function initTermFollow(root) {
+			var scope = root || document;
+			scope.querySelectorAll('[data-cm-term-body]').forEach(function (body) {
+				if (body.__cmTermArmed) return;
+				body.__cmTermArmed = true;
+
+				var term = body.closest('.cm-term');
+				if (!term) return;
+				var toggle = term.querySelector('[data-cm-follow-toggle]');
+				var jump = term.querySelector('[data-cm-jump-tail]');
+				var status = term.querySelector('.cm-term__status');
+				var MAX_LINES = 1000;
+				var following = true;
+
+				function paint() {
+					if (toggle) toggle.setAttribute('aria-pressed', following ? 'true' : 'false');
+					if (jump) jump.setAttribute('aria-hidden', following ? 'true' : 'false');
+					if (status) status.textContent = following ? 'Following tail' : 'Follow paused (scrolled up)';
+					body.classList.toggle('cm-term__body--following', following);
+				}
+
+				function engage() {
+					if (following) return;
+					following = true;
+					body.scrollTop = body.scrollHeight;
+					paint();
+					term.dispatchEvent(new CustomEvent('cm-term:follow', { detail: { following: true } }));
+				}
+
+				function disengage() {
+					if (!following) return;
+					following = false;
+					paint();
+					term.dispatchEvent(new CustomEvent('cm-term:follow', { detail: { following: false } }));
+				}
+
+				function toTail() {
+					body.scrollTop = body.scrollHeight;
+				}
+
+				// Scroll-up disengages; scrolling back to the bottom re-engages.
+				body.addEventListener('scroll', function () {
+					var atTail = body.scrollHeight - body.scrollTop - body.clientHeight < 4;
+					if (atTail) engage();
+					else disengage();
+				}, { passive: true });
+
+				if (toggle) toggle.addEventListener('click', function () {
+					if (following) disengage();
+					else { engage(); }
+				});
+				if (jump) jump.addEventListener('click', function () { toTail(); engage(); });
+
+				// Append hook for the app: window.cliMono.termAppend(body, text, level)
+				body.__cmTermAppend = function (text, level) {
+					var pre = body.querySelector('pre') || body;
+					var line = document.createElement('span');
+					line.className = 'cm-term__line' + (level ? ' cm-term__line--' + level : '');
+					line.textContent = text;
+					pre.appendChild(line);
+					// Virtualised window: keep the DOM bounded.
+					while (pre.children.length > MAX_LINES) pre.removeChild(pre.firstChild);
+					if (following) toTail();
+				};
+
+				paint();
+				if (following) toTail();
+			});
+			}
 
 	/* ---------- measure specimen readout ----------
 	   A token specimen that reports its own live state, so the width
@@ -4357,6 +4547,78 @@
 		}
 	}
 
+	/* ---------- reading / scroll progress ----------
+	   `.cm-progress` has always shipped the BAR - track, fill and the
+	   `--cm-progress` knob - and nothing ever drove it: a capability
+	   with no surface is a capability nobody can reach, the same
+	   failure that left `[data-cm-copy]` bound for months with no
+	   button on any page. This is the surface.
+
+	   `[data-cm-progress]` marks the bar for the runtime, and its VALUE
+	   names the scroll source:
+
+	     [data-cm-progress]            the page (reading progress)
+	     [data-cm-progress="page"]     the same, written out
+	     [data-cm-progress="#log"]     that element's own scroll box
+
+	   TWO writes, always together: the custom property the fill draws
+	   from, and `aria-valuenow`. The CSS makes the pair the contract -
+	   a bar that repaints while the attribute stays put lies to
+	   assistive tech - so the invariant is that both always read the
+	   same number, and the test holds the two against each other.
+
+	   The percentage is the FRACTION OF THE SCROLLABLE DISTANCE, not of
+	   the document: 0 at the top, 100 at the end. Two guards that are
+	   not cosmetic:
+	   - a source with nothing to scroll has no distance to divide by,
+	     and an unguarded ratio writes `NaN%` into the property - it
+	     reads 100 instead, because everything it holds is on screen;
+	   - WebKit's rubber-band lets `scrollTop` go NEGATIVE at the top
+	     and past `scrollHeight` on momentum, so the result is clamped
+	     to 0..100 before it is written, in both directions.
+
+	   One paint at bind time, so the bar is never wrong before the
+	   reader's first scroll; then `scroll` (passive, on the source) and
+	   `resize` (content height moves with the viewport). No rAF
+	   coalescing: the write is one custom property and one attribute,
+	   and an unproven throttle is exactly the redundancy whose removal
+	   nobody could test. */
+	function cmInitProgress(root) {
+		var bars = (root || document).querySelectorAll('[data-cm-progress]');
+		for (var i = 0; i < bars.length; i++) {
+			(function (bar) {
+				if (bar.__cmProgressBound) return;
+				bar.__cmProgressBound = true;
+				var mode = bar.getAttribute('data-cm-progress');
+				var src = null; // null = the page scroller
+				if (mode && mode !== 'page') {
+					src = document.querySelector(mode);
+					// A selector that names nothing leaves the bar exactly
+					// as authored: no write, no listener, no throw.
+					if (!src) return;
+				}
+				function read() {
+					var box = src
+						|| document.scrollingElement
+						|| document.documentElement;
+					var max = (box.scrollHeight || 0) - (box.clientHeight || 0);
+					if (max <= 0) return 100;
+					var pct = Math.round(((box.scrollTop || 0) / max) * 100);
+					return pct < 0 ? 0 : pct > 100 ? 100 : pct;
+				}
+				function paint() {
+					var pct = read();
+					bar.style.setProperty('--cm-progress', pct + '%');
+					// The pair, always together. See above.
+					bar.setAttribute('aria-valuenow', String(pct));
+				}
+				(src || window).addEventListener('scroll', paint, { passive: true });
+				window.addEventListener('resize', paint, { passive: true });
+				paint();
+			})(bars[i]);
+		}
+	}
+
 	function cmInitQuiz(root) {
 		var forms = root.querySelectorAll('[data-cm-quiz]');
 		for (var q = 0; q < forms.length; q++) {
@@ -4617,7 +4879,9 @@
 		initToasts(root);
 		initTooltipClamp(root);
 		initYears();
+		initRevert(root);
 		initMeasureReadout();
+		initTermFollow(root);
 		initTableLabels(root);
 		cmInitResize(root);
 		cmInitCal(root);
@@ -4627,6 +4891,7 @@
 		cmInitForms(root);
 		cmInitQuiz(root);
 		cmInitScroller(root);
+		cmInitProgress(root);
 		cmInitDatepickers(root);
 		cmInitSort(root);
 		cmInitTables(root);
@@ -4694,7 +4959,7 @@
 		return !!document.querySelector(
 			'[data-cm-header], [data-cm-nav-toggle], [data-cm-copy], ' +
 			'[data-cm-tabs], [data-cm-toast], [data-cm-quiz], [data-cm-scroller], ' +
-			'[data-cm-navmenu], .cm-prose-table'
+			'[data-cm-navmenu], [data-cm-progress], .cm-prose-table'
 		);
 	}
 
@@ -6105,7 +6370,13 @@
 		copyText: copyText,
 		toast: toast,
 		dismissToast: dismiss,
-		chartMarkup: chartMarkup
+		chartMarkup: chartMarkup,
+		initProgress: cmInitProgress,
+		termAppend: function (text, level) {
+			// Find the first armed term body and append to it.
+			var body = document.querySelector('[data-cm-term-body]');
+			if (body && body.__cmTermAppend) body.__cmTermAppend(text, level);
+		}
 	};
 
 	// Global handle for any project, plus module export for bundlers.

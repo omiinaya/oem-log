@@ -1937,6 +1937,67 @@ button.cm-row:hover { background: var(--bg-2); }
 .cm-term__prompt { color: var(--ink-faint); user-select: none; }
 .cm-term__line { display: block; white-space: pre-wrap; }
 .cm-term__line--out { color: var(--ink-dim); }
+/* Log levels — prefix + text decoration, not colour alone (a11y). */
+.cm-term__line--debug { border-inline-start: 2px solid var(--ink-faint); padding-inline-start: var(--space-2); }
+.cm-term__line--info { border-inline-start: 2px solid var(--accent); padding-inline-start: var(--space-2); }
+.cm-term__line--warn { border-inline-start: 2px solid #f59e0b; padding-inline-start: var(--space-2); }
+.cm-term__line--error { border-inline-start: 2px solid #ef4444; padding-inline-start: var(--space-2); font-weight: 600; }
+/* Follow mode controls — a second bar below the title bar. */
+.cm-term__controls {
+	display: flex; align-items: center; justify-content: space-between;
+	padding: var(--space-2) var(--space-3);
+	border-bottom: 1px solid var(--line);
+	background: var(--bg-3);
+	font-size: var(--text-xs);
+}
+.cm-term__follow-toggle {
+	display: inline-flex; align-items: center; gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--panel);
+	color: var(--ink);
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	cursor: pointer;
+}
+.cm-term__follow-toggle:hover { background: var(--panel-nested); }
+.cm-term__follow-toggle[aria-pressed="true"] {
+	background: var(--accent);
+	color: var(--bg);
+	border-color: var(--accent);
+}
+.cm-term__status {
+	color: var(--ink-dim);
+	font-size: var(--text-xs);
+}
+.cm-term__follow-indicator {
+	width: 6px; height: 6px; border-radius: 3px;
+	background: var(--ink-dim);
+}
+.cm-term__follow-toggle[aria-pressed="true"] .cm-term__follow-indicator {
+	background: var(--bg);
+	box-shadow: 0 0 0 1px var(--bg);
+}
+/* Jump-to-tail affordance — appears when follow disengages. */
+.cm-term__jump-tail {
+	display: none;
+	position: absolute;
+	bottom: var(--space-3);
+	inset-inline-end: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	background: var(--accent);
+	color: var(--bg);
+	border: none;
+	border-radius: var(--radius-sm);
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	cursor: pointer;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+	z-index: 10;
+}
+.cm-term__jump-tail[aria-hidden="false"] { display: inline-flex; align-items: center; gap: var(--space-2); }
+.cm-term__body--following { overflow-y: auto; max-height: 25rem; scroll-behavior: smooth; }
 
 /* ---------- definition / key-value grid ---------- */
 .cm-kv {
@@ -2297,6 +2358,129 @@ button.cm-row:hover { background: var(--bg-2); }
 .cm-alert--info .cm-alert__mark::before { content: '\2139\00a0'; }
 .cm-alert--info .cm-toast__mark::before { content: '\2139\00a0'; }
 .cm-alert--loading { border-inline-start-color: var(--ink-dim); }
+
+/* ============ cm-revert — countdown-undo banner ============
+   RevertGuard-armed settings writes (host, port, URL base, restores) and
+   any destructive operation the plan marks reversible. The banner offers
+   *Undo* (cancel the pending write) or *Apply now* (fire it early). The
+   countdown pauses while focus is inside the banner — a user reading the
+   copy or tabbing through controls must not be rushed.
+
+   Reuses the alert glyph pattern (● warn) but is its own component so
+   the app's class contract matches the gap document exactly.
+
+   Reduced-motion: no ticking animation, just "auto-applies in Ns". */
+
+.cm-revert {
+	display: flex;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border: 1px solid var(--line);
+	border-inline-start-width: 3px;
+	border-inline-start-color: var(--ink-faint);
+	border-radius: var(--radius-sm);
+	background: var(--panel);
+}
+/* The glyph: ⚠ (warning triangle, \25b2) — the action is pending, not done.
+   Same glyph as cm-alert--warn, but owned by this component. */
+.cm-revert::before {
+	content: '\25b2\00a0';
+	color: var(--ink-dim);
+	flex: 0 0 auto;
+}
+.cm-revert__body { min-width: 0; flex: 1 1 auto; }
+.cm-revert__message { margin: 0; }
+.cm-revert__actions {
+	display: flex;
+	gap: var(--space-2);
+	margin-top: var(--space-3);
+}
+.cm-revert__countdown {
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	color: var(--ink-dim);
+}
+.cm-revert__status {
+	margin: var(--space-3) 0 0;
+	color: var(--ink-faint);
+}
+/* The resolved notice: after expire/undo/apply the banner STAYS, with this
+   line unhidden. A disappearing banner is the exact ambiguity the undo
+   exists to remove. */
+/* The countdown is live text — polite announcements only (aria-live on the
+   slot in the markup), so a screen reader does not interrupt on every tick.
+   The app updates the number; the component only styles it. Typography only:
+   the slot sits inside the message, so there is no flex/positioning here.
+   Reduced-motion: nothing to remove — there is no animation at all; the
+   ticking TEXT is the affordance, and the guard list lives centrally. */
+
+/* ============ cm-guide — EPG guide grid ============
+   Channels × time. One row per channel, fixed time scale, a "now"
+   vertical line computed from an injected timestamp. Keyboard scroll
+   (arrows pan, Home/End jump). Virtualised rows for large lineups.
+   Mobile collapses to a single-channel agenda list (the grid is not
+   squeezed).
+
+   The now-line is deterministic: `--guide-now-x` is set by the app from
+   the current time and the scale; the component only renders it. */
+
+.cm-guide {
+	display: grid;
+	grid-template-columns: 12rem repeat(var(--guide-hours, 24), 6rem);
+	grid-auto-rows: 2.5rem;
+	overflow: auto;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+}
+.cm-guide__channel-label {
+	grid-column: 1;
+	grid-row: var(--guide-row, auto);
+	display: flex;
+	align-items: center;
+	padding: 0 var(--space-2);
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	background: var(--panel);
+	border-inline-end: 1px solid var(--line);
+}
+.cm-guide__program {
+	grid-column: var(--guide-col-start, auto) / span var(--guide-col-span, 1);
+	grid-row: var(--guide-row, auto);
+	display: flex;
+	align-items: center;
+	padding: 0 var(--space-2);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--panel-nested);
+	min-width: 0;
+	overflow: hidden;
+}
+.cm-guide__program--now {
+	background: var(--accent);
+	color: var(--bg);
+}
+.cm-guide__now-line {
+	position: sticky;
+	top: 0;
+	inset-inline-start: var(--guide-now-x, 9.5rem);
+	height: 100%;
+	width: 2px;
+	background: var(--ink-dim);
+	pointer-events: none;
+	z-index: 1;
+}
+/* Mobile: agenda list — one channel at a time, stacked programs */
+@media (max-width: 640px) {
+	.cm-guide {
+		grid-template-columns: 1fr;
+		grid-auto-rows: auto;
+	}
+	.cm-guide__channel-label,
+	.cm-guide__program {
+		grid-column: 1;
+	}
+	.cm-guide__now-line { display: none; }
+}
 
 /* ---------- table ----------
    Data, not prose. The scroll wrapper is part of the component because a
@@ -4607,6 +4791,118 @@ dialog.cm-dialog--spec:not([open]) {
 	border-radius: 0;
 }
 .cm-ratio--square { --cm-ratio: 1; }
+
+/* ---------- media grid: a lattice of preview tiles ----------
+
+   `.cm-media` frames ONE image a person wrote. This is the other shape a
+   renderer and a CMS both emit: N previews the reader CHOOSES between.
+   `.cm-cards` is the wrong host for that - it floors a column at 20rem,
+   which is one column on a phone and 860px, so a gallery of 20 files
+   reads as a list of full-width plates.
+
+   THE WELL IS 4:3, and `object-fit: contain`, not `cover`. A thumbnail
+   well under `cover` is the default everywhere and it is wrong HERE:
+   `cover` crops whatever the source's ratio is not, so a 6:1 panorama
+   inside a 4:3 well shows its middle 22% - the reader is choosing
+   between previews and the preview hides its own edges. `contain`
+   letterboxes instead, which is honest about what the file is. The
+   ratio therefore has to be on the well and not on the image: both
+   `contain` and `cover` make the <img> BOX fill the well, so a check
+   that compares boxes cannot tell them apart (tests/
+   measure-media-grid-webkit.py measures the DECLARED fit and the
+   natural ratio instead).
+
+   The floor is the whole contract: `--media-grid-min` says the narrowest
+   tile that can still show a recognisable preview plus a name on one
+   line. Written with a fallback so a consumer's scoped install - which
+   gets components.css and cannot import base.css - still gets 150px
+   rather than nothing. MEASURED in WebKit, not assumed: the lattice
+   fits floor((W + gap) / (min + gap)) columns, so with a 150px floor
+   and a 12px gap that is one column per 162px of CONTAINER. The
+   showcase's demo column is doubly padded (main shell 100% - 40px, two
+   nested cm-section--pad at 20px), so it is 270px wide at a 390px
+   viewport and the lattice correctly shows ONE column there - two
+   columns need a 312px container, i.e. a 432px viewport in this
+   showcase - and four columns at 860px (740px container). An earlier
+   version of this comment said "2 columns at 390, 3 at 860" from
+   theory; both numbers were wrong.
+*/
+.cm-media-grid {
+    --media-grid-min: 150px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(var(--media-grid-min, 150px), 100%), 1fr));
+    gap: var(--space-3);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+.cm-media-grid__tile {
+    display: flex;
+    flex-direction: column;
+    /* the name and meta have to be able to shrink below their content,
+       or a long filename sets the column width and the lattice stops
+       being one. */
+    min-width: 0;
+    gap: var(--space-2);
+}
+/* `min-width: 0` on the GRID ITEM too, not just the tile inside it. A grid
+   item's automatic minimum is its min-content, and the name is `nowrap`,
+   so without this one long filename widens its own track past the 1fr the
+   floor asked for - the lattice stops being a lattice and the page gains a
+   horizontal scroll. MEASURED: with the tile rule alone, a
+   `very-long-filename-that-nobody-shortened.png` widened its column. */
+.cm-media-grid > li {
+    min-width: 0;
+}
+.cm-media-grid__thumb {
+    aspect-ratio: 4 / 3;
+    /* the WELL owns the ratio, the image fills it; see above. */
+    overflow: hidden;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+}
+.cm-media-grid__thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* contain, deliberately. The letterbox is the point. */
+    object-fit: contain;
+    border-radius: 0;
+}
+/* The name CLIPS, it does not wrap: a wrapped name moves every tile below
+   it out of line with its neighbours, and a gallery's whole value is that
+   the grid lines up. `max(var(--min-font), var(--text-xs))` is the same
+   floor every other component carries - without it a coarse pointer gets
+   the same 13px label a desktop does. */
+.cm-media-grid__name {
+    font-size: max(var(--min-font), var(--text-xs));
+    line-height: 1.3;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.cm-media-grid__meta {
+    font-size: max(var(--min-font), var(--text-sm));
+    line-height: 1.4;
+    color: var(--ink-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+/* The actions row, when the consumer ships one, shares a BOTTOM edge
+   across a row: `align-items: end` is what stops a two-line name in one
+   tile pushing that tile's button below its neighbours'. */
+.cm-media-grid__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
 
 /* ---------- cards ----------
    A bordered surface with a header, for one subject that needs more
@@ -10795,6 +11091,147 @@ dialog.cm-lightbox--spec:not([open]) .cm-lightbox__close {
 .cm-trace__trigger[aria-expanded='true']::after { content: "−"; }
 /* NO reduced-motion rule here: the chevron swap is not animated — hiding
    it under reduce would REMOVE an affordance rather than remove a motion. */
+
+/* ============ cm-diff — word-level diff rows (batch 34) ============
+   For Config Sync reconcile results, profile previews, and any
+   preview-then-apply surface.
+
+   THE OPERATOR IS NOT A COLOUR. This library has no chroma that could
+   carry an op even if it wanted to, so the interesting question is what
+   DOES carry it: a distinct glyph prefix on every row plus a distinct
+   text decoration. `+` create / `~` update / `-` delete, with delete
+   struck through and create underlined. Read the grep in the suite's
+   op-mapping check: three ops, three glyphs, three decorations, no two
+   alike - a palette swap cannot pass it.
+
+   `update` rows carry the word-level spans the APP computes; the
+   component only renders and styles them, which is why there is no diff
+   algorithm anywhere in this file. */
+
+.cm-diff {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+	font-family: var(--font-mono);
+	font-size: max(var(--min-font), var(--text-xs));
+	line-height: 1.6;
+}
+
+/* One row = an op gutter and a value column. `grid-template-columns` is
+   what gives long values the HANGING indent the contract asks for: the
+   value wraps inside its own column, so continuation lines align at the
+   text edge rather than running back under the op glyph. */
+.cm-diff__row {
+	display: grid;
+	grid-template-columns: 2.2em 1fr;
+	align-items: baseline;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-block-start: 1px solid var(--line-soft);
+}
+.cm-diff__row:first-child { border-block-start: 0; }
+
+/* The glyph. `content` on a pseudo-element means the prefix is paint, not
+   content, so it is aria-hidden by construction and the accessible name
+   comes from the row's own text - a diff row announced as "plus foo" is
+   worse than one announced as "foo, create". The op WORD is real text in
+   `.cm-diff__op`, which is what a screen reader reads. */
+.cm-diff__row::before {
+	content: ' ';
+	color: var(--ink);
+	font-weight: 600;
+	text-align: center;
+}
+.cm-diff__row[data-op='create']::before { content: '+'; }
+.cm-diff__row[data-op='update']::before { content: '~'; }
+.cm-diff__row[data-op='delete']::before { content: '−'; }
+.cm-diff__row[data-op='same']::before { content: ' '; }
+
+/* The op word, for the reader who gets no glyph. Visually a small
+   uppercase label; structurally real text. Borrowing the library's
+   sr-only pattern (1px box, clipped, no layout impact). */
+.cm-diff__op {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Decoration is the second half of "not colour alone", and it is what
+   survives greyscale print. */
+.cm-diff__row[data-op='create'] .cm-diff__val { text-decoration: underline; text-decoration-color: var(--ink-faint); }
+.cm-diff__row[data-op='delete'] .cm-diff__val { text-decoration: line-through; text-decoration-color: var(--ink-dim); }
+
+/* Word-level spans. `del` and `ins` are real elements - the semantics are
+   the browser's, so nothing has to restate them. */
+.cm-diff__del {
+	text-decoration: line-through;
+	text-decoration-color: var(--ink-dim);
+	opacity: 0.72;
+}
+.cm-diff__ins {
+	text-decoration: underline;
+	text-decoration-color: var(--ink);
+	font-weight: 600;
+}
+/* A wrapped `ins` span must not draw its decoration under the break in a
+   way that reads as two separate insertions. */
+.cm-diff__ins, .cm-diff__del { box-decoration-break: clone; }
+
+/* ============ the unchanged fold ============
+   `same` rows are the majority of any real diff, and rendering them all
+   is how a 400-line config change becomes unreadable. They collapse
+   behind a count. The count is REAL TEXT in the trigger, written by the
+   app from the data it already has - a number the component computed
+   would be a second ledger, and the suite checks the app's count is what
+   renders.
+
+   The fold is a `<details>` element - expansion is the platform's, and
+   the runtime does not need to own what `<details>` already gives us. */
+.cm-diff__fold {
+	list-style: none;
+	border-block-start: 1px solid var(--line-soft);
+}
+.cm-diff__fold > summary {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	width: 100%;
+	min-height: var(--tap);
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	border: 0;
+	background: none;
+	color: var(--ink-dim);
+	font: inherit;
+	font-size: var(--text-xs);
+	text-align: start;
+	cursor: pointer;
+}
+.cm-diff__fold > summary:hover { color: var(--ink); }
+.cm-diff__fold > summary:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: -2px;
+}
+.cm-diff__fold > summary::-webkit-details-marker { display: none; }
+/* The chevron is an affordance, not the state: the state is `[open]`
+   and the label word. Hiding the chevron under reduced motion would drop
+   an affordance rather than a motion, so there is no reduced-motion rule
+   here - the same call `.cm-trace__trigger` makes. */
+.cm-diff__fold > summary::after {
+	content: '▸';
+	margin-inline-start: auto;
+	color: var(--ink-faint);
+}
+.cm-diff__fold[open] > summary::after { content: '▾'; }
 
 /* ============ stack ownership (LAST, on purpose) ============
    These two rules must beat every component's own block margin. They are
