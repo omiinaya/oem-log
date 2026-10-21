@@ -2204,6 +2204,111 @@ button.cm-row:hover { background: var(--bg-2); }
 	.cm-state__actions .cm-btn { min-height: var(--tap); }
 }
 
+/* ---------- dropzone: the surface you drop a file onto ----------
+   A file target is a state machine, not a box. It has to show what it
+   accepts before anything arrives, what it took once it has, that it is
+   working, and what failed - and it has to LOOK like something to drop on.
+
+   `.cm-attach` is a file that is already chosen; this is the empty target
+   that chooses one. The frame is dashed at rest and solid while a drag is
+   over it, because that is the entire affordance: a solid box reads as a
+   container you cannot drop into. */
+.cm-dropzone {
+	display: grid;
+	gap: var(--space-3);
+	justify-items: center;
+	align-content: center;
+	min-height: 12rem;
+	padding: var(--space-7) var(--space-4);
+	border: 1px dashed var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--panel);
+	color: var(--ink-dim);
+	text-align: center;
+}
+/* The zone is a control, so it takes the focus ring. It is focusable in the
+   markup (role="button" + tabindex="0") because a keyboard user cannot drag:
+   the same element has to accept Enter and Space. */
+.cm-dropzone:focus-visible {
+	outline: var(--focus);
+	outline-offset: 2px;
+}
+.cm-dropzone[aria-disabled='true'] { opacity: 0.5; }
+
+/* Drag-over is transient, so it changes the BORDER rather than adding a
+   shadow: a shadow at this size reads as elevation (a panel lifted above the
+   page) when what actually happened is a hit test succeeding. */
+.cm-dropzone--over,
+.cm-dropzone[data-over='true'] {
+	border-style: solid;
+	border-color: var(--accent);
+	background: var(--bg-3);
+	color: var(--ink);
+}
+
+/* Decoration, and hidden from assistive tech by the caller. The ring is drawn
+   here so a consumer cannot ship a filled mark by accident. */
+.cm-dropzone__mark {
+	display: block;
+	width: 2.4rem;
+	height: 2.4rem;
+	border: 1px dashed var(--line);
+	color: var(--ink-faint);
+	line-height: 2.3rem;
+	font-size: var(--min-font);
+}
+.cm-dropzone__title {
+	margin: 0;
+	color: var(--ink);
+	font-size: var(--text-lg);
+	font-weight: 600;
+}
+.cm-dropzone__text { margin: 0; color: var(--ink-dim); }
+.cm-dropzone__note {
+	margin: 0;
+	max-width: var(--measure-narrow);
+	color: var(--ink-faint);
+	font-size: var(--text-xs);
+}
+
+/* What the target accepts. This row is content, not decoration: the reader
+   decides whether their file is even in scope before dragging anything. */
+.cm-dropzone__platforms {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	justify-content: center;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Busy and error keep the frame. Only the mark and the copy change, so the
+   page does not jump when a drop starts or fails - the target stays a target.
+   The error edge is SOLID INK plus a glyph, never a colour: the system carries
+   severity by shape and weight, and a hue here would be the only red on the
+   page (see the alert and chip variants). */
+.cm-dropzone--busy { border-style: solid; }
+.cm-dropzone--err {
+	border-style: solid;
+	border-color: var(--ink);
+	color: var(--ink);
+}
+.cm-dropzone--picked {
+	border-style: solid;
+	text-align: start;
+	justify-items: stretch;
+	align-content: start;
+}
+
+/* A symbol, an address or a hash inline in running text is monospace but is
+   NOT a code span: `.cm-inline-code` draws a box, which turns a bare address
+   into an object the reader assumes they can click. This is the type alone. */
+.cm-mono {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}
+
 /* A skeleton is a placeholder, never a spinner. It is aria-hidden because
    "loading" is announced once by the region, not once per bar. */
 .cm-skeleton { display: grid; gap: var(--space-3); }
@@ -4665,6 +4770,80 @@ dialog.cm-dialog--spec:not([open]) {
 	font-size: max(var(--min-font), var(--text-micro));
 	white-space: nowrap;
 }
+
+/* ---------- the keyboard map: a sheet DERIVED from the page's bindings ----
+
+   The runtime builds this dialog from `[data-cm-key]` on demand, so it has
+   no authored markup and cannot drift from the bindings it documents. The
+   two columns are the point: keys are a fixed, monospaced measure at the
+   inline-start edge and every label starts at the same x, which is what
+   makes forty rows scannable instead of ragged.
+
+   `.cm-keys__label { text-align: end }` and not `right`: the whole library
+   is spelled with logical properties, and the rendering is identical in
+   LTR. `.cm-keys__row + .cm-keys__row` draws the hairline, so the last row
+   never carries one. */
+.cm-dialog.cm-keys {
+	width: min(34rem, calc(100% - (2 * var(--gutter))));
+	padding: 0;
+	overflow: hidden;
+}
+.cm-keys__bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	border-block-end: 1px solid var(--line);
+}
+.cm-keys__title {
+	margin: 0;
+	color: var(--ink-faint);
+	font-size: var(--text-sm);
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+}
+.cm-keys__list {
+	margin: 0;
+	padding: 0 var(--space-1);
+	list-style: none;
+	max-height: min(22rem, 55vh);
+	overflow: auto;
+}
+.cm-keys__row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding: var(--space-2) var(--space-3);
+}
+.cm-keys__row + .cm-keys__row { border-block-start: 1px solid var(--line-soft); }
+.cm-keys__keys {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	color: var(--ink-faint);
+	font-size: max(var(--min-font), var(--text-micro));
+	white-space: nowrap;
+}
+.cm-keys__sep { color: var(--ink-faint); }
+.cm-keys__label {
+	color: var(--ink-dim);
+	text-align: end;
+}
+.cm-keys__note {
+	margin: 0;
+	padding: var(--space-2) var(--space-4) var(--space-4);
+	border-block-start: 1px solid var(--line);
+	color: var(--ink-faint);
+	font-size: var(--text-sm);
+}
+/* The bar's close button is a real button in the flow; the sheet is not a
+   form that submits anywhere, so it never grows a submit affordance. */
+.cm-keys__bar .cm-btn { flex: 0 0 auto; }
 
 /* ---------- pager (pagination) ----------
    Real links in a labelled nav: a page is an address, so no script.
@@ -11482,6 +11661,138 @@ dialog.cm-lightbox--spec:not([open]) .cm-lightbox__close {
 	color: var(--ink-faint);
 }
 .cm-diff__fold[open] > summary::after { content: '▾'; }
+
+/* ============ print: the page a reader keeps ============
+   Print is a RENDER MODE, not a screenshot - a queue of decisions the
+   screen makes that paper cannot keep. Four of them are defects a reader
+   meets, all MEASURED in WebKit under print emulation on the showcase at
+   390, before this block existed:
+
+   1. A SCROLL CONTAINER PRINTS ITS WINDOW. `.cm-scrollarea` held 747px of
+      content in a 222px box, so 525px - 70% - never reached the page and
+      the table simply stopped. Unclipped here, and both halves are
+      needed: `max-height: none` alone leaves the box tall but still a
+      scrollport, `overflow: visible` alone leaves the cap cutting it.
+   2. CHROME PRINTS. The header, burger, drawer, scrim, search field, copy
+      buttons, reading-progress bar and revert countdown all rendered on
+      paper - twelve of them. A countdown that says "revert in 10s" is a
+      lie on paper, not a control; the RESOLVED notice is a record, so
+      only the armed banner is hidden.
+   3. A DARK FILL LOSES ITS TEXT. Economy colour drops backgrounds, so an
+      INVERTED block (a terminal, a primary button, a selected calendar
+      day) prints light-on-white: the showcase's terminal text is #e8e8e8,
+      1.23:1 against paper. `print-color-adjust: exact` keeps the fill
+      that carries the contrast.
+   4. A LINK LOSES ITS DESTINATION. On screen the href is behind a
+      pointer; on paper the words are all that is left. Absolute http(s)
+      destinations print after the link. Relative and in-page links do
+      NOT - `attr(href)` would print "/blog" and "#top" as if they were
+      addresses.
+
+   `!important` on the hide list is load-bearing, not decoration: a
+   component's own state rule is usually more specific than the bare class
+   (`.cm-js .cm-nav-toggle` is (0,2,0)), and a print reset must not lose
+   that argument to whichever specific rule happens to exist today. */
+@page {
+	/* A page context has no element, so a custom property cannot reach it:
+	   `margin: var(--x)` resolves to nothing in @page in every engine this
+	   ships to. Millimetres, on purpose, in the one place a token cannot
+	   go. */
+	margin: 14mm 12mm;
+}
+
+@media print {
+	/* 1. what scrolls prints whole */
+	.cm-scrollarea,
+	.cm-scroller,
+	.cm-table-wrap,
+	.cm-code--scroll,
+	.cm-typeset-scroll,
+	.cm-term__body,
+	.cm-codebar pre,
+	pre.cm-code {
+		max-height: none;
+		overflow: visible;
+	}
+	/* `pre` never wraps, so a line wider than the page is not clipped on
+	   paper - the tail is simply gone. `.cm-code--scroll` already wraps on
+	   screen; these are the two that do not, and `.cm-codebar`'s <pre> is
+	   BARE (the wrapper is the class), which is why it needs its own
+	   selector rather than a descendant of `.cm-code`. */
+	.cm-codebar pre,
+	pre.cm-code {
+		white-space: pre-wrap;
+	}
+
+	/* 2. chrome is not content */
+	.cm-header,
+	.cm-nav-toggle,
+	.cm-nav-scrim,
+	.cm-drawer,
+	.cm-toast-region,
+	.cm-scroll-fade,
+	.cm-pager,
+	.cm-search,
+	.cm-copy,
+	.cm-codebar__float,
+	.cm-term__controls,
+	.cm-keys,
+	.cm-bell,
+	.cm-revert:not([data-cm-revert-resolved]),
+	[data-cm-progress] {
+		display: none !important;
+	}
+
+	/* 3. the fill IS the contrast.
+	   Only the blocks MEASURED inverted under print are listed: --ink fill
+	   with a --bg label. The terminal is NOT here, and that is the print
+	   palette doing its job - it prints light, so `exact` on it would be a
+	   rule with nothing to prove. */
+	.cm-btn--primary,
+	.cm-term__jump-tail,
+	.cm-bubble,
+	.cm-cal__day[aria-selected='true'] {
+		print-color-adjust: exact;
+		-webkit-print-color-adjust: exact;
+	}
+
+	/* 4. a row, a card or a code block is not split across a page edge */
+	.cm-row,
+	.cm-card,
+	.cm-code,
+	.cm-term,
+	.cm-tile,
+	.cm-stat,
+	.cm-meter,
+	.cm-swatch,
+	.cm-timeline__item,
+	.cm-diff__row,
+	.cm-table tr,
+	.cm-prose-table tr {
+		break-inside: avoid;
+	}
+	/* ...and a heading is not left alone at the foot of a page. */
+	.cm-prose h2,
+	.cm-prose h3,
+	.cm-prose h4,
+	.cm-typeset h2,
+	.cm-typeset h3,
+	.cm-typeset h4 {
+		break-after: avoid;
+	}
+
+	/* 5. where a link went.
+	   `break-word`, not `anywhere`: both break a URL that cannot fit, but
+	   `anywhere` also shrinks min-content sizing, which starves the column
+	   the link sits in (the same call `.cm-tag` makes). */
+	.cm-prose a[href^='http']::after,
+	.cm-typeset a[href^='http']::after {
+		content: ' (' attr(href) ')';
+		font-size: var(--text-micro);
+		color: var(--ink-faint);
+		overflow-wrap: break-word;
+	}
+}
 
 /* ============ stack ownership (LAST, on purpose) ============
    These two rules must beat every component's own block margin. They are
